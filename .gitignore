@@ -1,0 +1,4 @@
+charta
+compile_commands.json
+src/*.o
+.cache/

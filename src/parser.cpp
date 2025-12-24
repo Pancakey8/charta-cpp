@@ -1,0 +1,495 @@
+#include "parser.hpp"
+#include <charconv>
+#include <cstddef>
+#include <string_view>
+#include <system_error>
+#include <type_traits>
+
+constexpr bool is_space(char32_t c) noexcept {
+    switch (c) {
+    case U'\u0009':
+    case U'\u000A':
+    case U'\u000B':
+    case U'\u000C':
+    case U'\u000D':
+    case U'\u0020':
+    case U'\u0085':
+    case U'\u00A0':
+    case U'\u1680':
+    case U'\u180E':
+    case U'\u2028':
+    case U'\u2029':
+    case U'\u202F':
+    case U'\u205F':
+    case U'\u2060':
+    case U'\u3000':
+    case U'\uFEFF':
+        return true;
+    default:
+        return (c >= U'\u2000' && c <= U'\u200D');
+    }
+}
+
+char32_t decode_utf(std::string_view const str, std::size_t pos,
+                    std::size_t &bytes) {
+    bytes = 0;
+    if (pos >= str.size())
+        return 0;
+    unsigned char c = str[pos];
+
+    if (c < 0x80) {
+        bytes = 1;
+        return c;
+    } else if ((c >> 5) == 0b110 && pos + 1 < str.size()) {
+        bytes = 2;
+        return ((c & 31) << 6) | (str[pos + 1] & 63);
+    } else if ((c >> 4) == 0b1110 && pos + 2 < str.size()) {
+        bytes = 3;
+        return ((c & 15) << 12) | ((str[pos + 1] & 63) << 6) |
+               (str[pos + 2] & 63);
+    } else if ((c >> 3) == 0b11110 && pos + 3 < str.size()) {
+        bytes = 4;
+        return ((c & 7) << 18) | ((str[pos + 1] & 63) << 12) |
+               ((str[pos + 2] & 63) << 6) | (str[pos + 3] & 63);
+    }
+
+    bytes = 0;
+    return 0;
+}
+
+std::string encode_utf8(char32_t c) {
+    std::string out;
+
+    if (c <= 0x7F) {
+        out.push_back(static_cast<char>(c));
+    } else if (c <= 0x7FF) {
+        out.push_back(static_cast<char>(0xC0 | (c >> 6)));
+        out.push_back(static_cast<char>(0x80 | (c & 0x3F)));
+    } else if (c <= 0xFFFF) {
+        out.push_back(static_cast<char>(0xE0 | (c >> 12)));
+        out.push_back(static_cast<char>(0x80 | ((c >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (c & 0x3F)));
+    } else {
+        out.push_back(static_cast<char>(0xF0 | (c >> 18)));
+        out.push_back(static_cast<char>(0x80 | ((c >> 12) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | ((c >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (c & 0x3F)));
+    }
+
+    return out;
+}
+
+char32_t parser::Lexer::peek() {
+    std::size_t b;
+    if (char32_t c = decode_utf(input, cursor, b); b) {
+        return c;
+    } else {
+        return 0;
+    }
+}
+
+char32_t parser::Lexer::pop() {
+    std::size_t b;
+    if (char32_t c = decode_utf(input, cursor, b); b) {
+        cursor += b;
+        return c;
+    } else {
+        return 0;
+    }
+}
+
+bool parser::Lexer::match(std::string_view const pat) {
+    if (cursor + pat.size() - 1 < input.size() &&
+        input.substr(cursor, pat.size()) == pat) {
+        cursor += pat.size();
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool parser::Lexer::parse_int_or_float() {
+    std::size_t start = cursor;
+    if (char32_t c = peek(); c == U'+' || c == U'-') {
+        pop();
+    }
+    for (char32_t c = peek(); U'0' <= c && c <= U'9'; c = peek()) {
+        pop();
+    }
+    if (std::string_view s{input.data() + start, cursor - start};
+        s.empty() || s == "+" || s == "-") {
+        cursor = start;
+        return false;
+    }
+    if (peek() == U'.') {
+        pop();
+        for (char32_t c = peek(); U'0' <= c && c <= U'9'; c = peek()) {
+            pop();
+        }
+
+        float val;
+        if (std::from_chars(input.data() + start, input.data() + cursor, val)
+                .ec == std::errc()) {
+            output.emplace_back(
+                Token{start, cursor, cursor - start, Token::Int, val});
+        } else {
+            throw ParserError(start, cursor,
+                              "Floating point conversion out of range");
+        }
+    } else {
+        int val;
+        if (std::from_chars(input.data() + start, input.data() + cursor, val)
+                .ec == std::errc()) {
+            output.emplace_back(
+                Token{start, cursor, cursor - start, Token::Int, val});
+        } else {
+            throw ParserError(start, cursor, "Integer conversion out of range");
+        }
+    }
+    return true;
+}
+
+bool parser::Lexer::parse_symbol() {
+    auto start = cursor;
+    while (char32_t c = peek()) {
+        if (c == U'?' || c == U'[' || c == U']' || c == U'(' || c == U')' ||
+            c == U'{' || c == U'}' || c == U'"' || c == U'\'')
+            break;
+        if (is_space(c))
+            break;
+        if (match("->") || match("<-") || match("|^") || match("|v"))
+            break;
+        pop();
+    }
+    if (cursor == start)
+        return false;
+    output.emplace_back(Token{start, cursor, cursor - start, Token::Symbol,
+                              input.substr(start, cursor - start)});
+    return true;
+}
+
+bool parser::Lexer::parse_special() {
+    auto start = cursor;
+    switch (peek()) {
+    case U'?':
+        pop();
+        output.emplace_back(
+            Token{start, cursor, cursor - start, Token::QMark, {}});
+        return true;
+    case U'[':
+        pop();
+        output.emplace_back(
+            Token{start, cursor, cursor - start, Token::LSquare, {}});
+        return true;
+    case U']':
+        pop();
+        output.emplace_back(
+            Token{start, cursor, cursor - start, Token::RSquare, {}});
+        return true;
+    case U'(':
+        pop();
+        output.emplace_back(
+            Token{start, cursor, cursor - start, Token::LParen, {}});
+        return true;
+    case U')':
+        pop();
+        output.emplace_back(
+            Token{start, cursor, cursor - start, Token::RParen, {}});
+        return true;
+    case U'{':
+        pop();
+        output.emplace_back(
+            Token{start, cursor, cursor - start, Token::LCurly, {}});
+        return true;
+    case U'}':
+        pop();
+        output.emplace_back(
+            Token{start, cursor, cursor - start, Token::RCurly, {}});
+        return true;
+    default:
+        if (match("->")) {
+            output.emplace_back(
+                Token{start, cursor, cursor - start, Token::Right, {}});
+            return true;
+        }
+
+        if (match("<-")) {
+            output.emplace_back(
+                Token{start, cursor, cursor - start, Token::Left, {}});
+            return true;
+        }
+
+        if (match("|^")) {
+            output.emplace_back(
+                Token{start, cursor, cursor - start, Token::Up, {}});
+            return true;
+        }
+
+        if (match("|v")) {
+            output.emplace_back(
+                Token{start, cursor, cursor - start, Token::Down, {}});
+            return true;
+        }
+
+        return false;
+    }
+}
+
+std::optional<char32_t> parser::Lexer::take_char() {
+    char32_t c = pop();
+    if (!c)
+        return {};
+    if (c == '\n')
+        return {};
+    if (c == U'\\') {
+        c = pop();
+        if (!c)
+            return {};
+        switch (c) {
+        case U'n':
+            return U'\n';
+        case U'r':
+            return U'\r';
+        case U't':
+            return U'\t';
+        default:
+            return c;
+        }
+    } else {
+        return c;
+    }
+}
+
+bool parser::Lexer::parse_char() {
+    auto start = cursor;
+    if (peek() != U'\'')
+        return false;
+    pop();
+    auto c = take_char();
+    if (peek() != U'\'' || !c) {
+        throw ParserError(start, cursor, "Unclosed character literal");
+        return true;
+    }
+    pop();
+    output.emplace_back(Token{start, cursor, cursor - start, Token::Char, *c});
+    return true;
+}
+
+bool parser::Lexer::parse_string() {
+    auto start = cursor;
+    if (peek() != U'"')
+        return false;
+    pop();
+    std::string contents{};
+    while (auto c = peek()) {
+        if (c == U'"') {
+            pop();
+            output.emplace_back(
+                Token{start, cursor, cursor - start, Token::String, contents});
+            return true;
+        }
+        auto ch = take_char();
+        if (!ch) {
+            break;
+        }
+        contents += encode_utf8(*ch);
+    }
+    throw ParserError(start, cursor, "Unclosed string literal");
+    return true;
+}
+
+bool parser::Lexer::parse_space() {
+    auto start = cursor;
+    switch (peek()) {
+    case U' ':
+        pop();
+        output.emplace_back(Token{start, cursor, 1, Token::Space, {}});
+        return true;
+    case U'\t':
+        pop();
+        output.emplace_back(Token{start, cursor, 4, Token::Space, {}});
+        return true;
+    case U'\n':
+        pop();
+        output.emplace_back(Token{start, cursor, 0, Token::Linebreak, {}});
+        return true;
+    }
+    return false;
+}
+
+bool parser::Lexer::parse_one() {
+    return parse_space() || parse_int_or_float() || parse_special() ||
+           parse_char() || parse_string() || parse_symbol();
+}
+
+std::vector<parser::Token> parser::Lexer::parse_all() {
+    while (peek()) {
+        if (!parse_one()) {
+            auto start = cursor;
+            pop();
+            throw ParserError(start, cursor - start, "Unknown character");
+        }
+    }
+    return output;
+}
+
+std::optional<parser::Token> parser::Parser::peek() {
+    if (cursor >= input.size()) {
+        return {};
+    } else {
+        return input[cursor];
+    }
+}
+
+std::optional<parser::Node> parser::Parser::parse_node() {
+    if (auto t = peek(); t) {
+        switch (t->kind) {
+        case Token::Int:
+            ++cursor;
+            return Node{Node::IntLit, t->length, t->value};
+        case Token::Float:
+            ++cursor;
+            return Node{Node::FloatLit, t->length, t->value};
+        case Token::Char:
+            ++cursor;
+            return Node{Node::CharLit, t->length, t->value};
+        case Token::String:
+            ++cursor;
+            return Node{Node::StrLit, t->length, t->value};
+        case Token::Symbol:
+            ++cursor;
+            return Node{Node::Call, t->length, t->value};
+        case Token::QMark:
+            ++cursor;
+            return Node{Node::Branch, t->length, {}};
+        case Token::Left:
+            ++cursor;
+            return Node{Node::DirLeft, t->length, {}};
+        case Token::Right:
+            ++cursor;
+            return Node{Node::DirRight, t->length, {}};
+        case Token::Up:
+            ++cursor;
+            return Node{Node::DirUp, t->length, {}};
+        case Token::Down:
+            ++cursor;
+            return Node{Node::DirDown, t->length, {}};
+        case Token::Space:
+            ++cursor;
+            return Node{Node::Space, t->length, {}};
+        default:
+            return {};
+        }
+    }
+
+    return {};
+}
+
+parser::Grid parser::Parser::parse_grid() {
+    Grid g{};
+    std::vector<Node> row{};
+    while (auto p = peek()) {
+        if (p->kind == Token::Linebreak) {
+            ++cursor;
+            g.emplace_back(row);
+            row.clear();
+        } else if (auto n = parse_node()) {
+            row.emplace_back(*n);
+        } else {
+            break;
+        }
+    }
+    if (!row.empty()) {
+        g.emplace_back(row);
+    }
+    return g;
+}
+
+void parser::Parser::spaces() {
+    while (auto p = peek()) {
+      if (p->kind != Token::Space && p->kind != Token::Linebreak)
+            break;
+        ++cursor;
+    }
+}
+
+std::optional<parser::FnDecl> parser::Parser::parse_fndecl() {
+    if (auto p = peek(); !(p && p->kind == Token::Symbol &&
+                           std::get<std::string>(p->value) == "fn")) {
+        return {};
+    }
+    ++cursor;
+    spaces();
+    std::string name;
+    if (auto p = peek(); p && p->kind == Token::Symbol) {
+        name = std::get<std::string>(p->value);
+    } else {
+        throw ParserError(p->start, p->end, "Expected function name");
+    }
+    ++cursor;
+    spaces();
+    std::size_t start, end;
+    if (auto p = peek(); p && p->kind == Token::LParen) {
+        start = p->start;
+        end = p->end;
+    } else {
+        throw ParserError(p->start, p->end, "Expected '('");
+    }
+    ++cursor;
+    spaces();
+    bool is_closed{false};
+    std::vector<std::string> args{};
+    while (auto p = peek()) {
+        ++cursor;
+        end = p->end;
+        if (p->kind == Token::RParen) {
+            is_closed = true;
+            break;
+        } else if (p->kind == Token::Symbol) {
+            args.emplace_back(std::get<std::string>(p->value));
+        } else {
+            throw ParserError(p->start, p->end,
+                              "Unexpected token in function argument list");
+        }
+        spaces();
+    }
+    if (!is_closed) {
+        throw ParserError(start, end, "Unclosed function argument list");
+    }
+    spaces();
+    if (auto p = peek(); !(p && p->kind == Token::LCurly)) {
+        throw ParserError(p->start, p->end, "Expected '{'");
+    }
+    ++cursor;
+    auto grid = parse_grid();
+    if (auto p = peek(); !(p && p->kind == Token::RCurly)) {
+        throw ParserError(p->start, p->end, "Expected '}'");
+    }
+    ++cursor;    
+    Argument arg_num = [&args]() {
+        if (args.empty()) {
+            return Argument{Argument::Limited, 0};
+        } else if (args.back() == "...") {
+            return Argument{Argument::Ellipses, args.size() - 1};
+        } else {
+            return Argument{Argument::Limited, args.size()};
+        }
+    }();
+    return FnDecl{name, arg_num, grid};
+}
+
+std::optional<parser::TopLevel> parser::Parser::parse_top_level() {
+    return parse_fndecl();
+}
+
+std::vector<parser::TopLevel> parser::Parser::parse_program() {
+    std::vector<parser::TopLevel> tls{};
+    while (auto p = peek()) {
+        if (auto tl = parse_top_level()) {
+            tls.emplace_back(*tl);
+        } else {
+            throw ParserError(p->start, p->end, "Invalid top-level statement");
+        }
+    }
+    return tls;
+}
