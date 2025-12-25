@@ -1,4 +1,4 @@
-#include "core.h"
+#include "core.pre.h"
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -164,14 +164,14 @@ void print_value(ch_value v) {
     }
 }
 
-ch_stack_node *__sprint(ch_stack_node **full) {
+ch_stack_node *_mangle_(print, "print")(ch_stack_node **full) {
     ch_stack_node *local = ch_stk_args(full, 1);
     ch_value v = ch_stk_pop(&local);
     print_value(v);
     return NULL;
 }
 
-ch_stack_node *__sdup(ch_stack_node **full) {
+ch_stack_node *_mangle_(dup, "dup")(ch_stack_node **full) {
     ch_stack_node *local = ch_stk_args(full, 1);
     ch_value v = ch_stk_pop(&local);
     ch_value cp = ch_valcpy(&v);
@@ -180,7 +180,7 @@ ch_stack_node *__sdup(ch_stack_node **full) {
     return local;
 }
 
-ch_stack_node *__sswp(ch_stack_node **full) {
+ch_stack_node *_mangle_(swp, "swp")(ch_stack_node **full) {
     ch_stack_node *local = ch_stk_args(full, 2);
     ch_value a = ch_stk_pop(&local);
     ch_value b = ch_stk_pop(&local);
@@ -189,7 +189,7 @@ ch_stack_node *__sswp(ch_stack_node **full) {
     return local;
 }
 
-ch_stack_node *__sdbg(ch_stack_node **full) {
+ch_stack_node *_mangle_(dbg, "dbg")(ch_stack_node **full) {
     ch_stack_node *elem = *full;
     size_t i = 0;
     while (elem) {
@@ -197,10 +197,10 @@ ch_stack_node *__sdbg(ch_stack_node **full) {
         print_value(elem->val);
         elem = elem->next;
     }
-    return NULL;    
+    return NULL;
 }
 
-ch_stack_node *__s__u61(ch_stack_node **full) {
+ch_stack_node *_mangle_(equ_cmp, "=")(ch_stack_node **full) {
     ch_stack_node *local = ch_stk_args(full, 2);
     ch_value b = ch_stk_pop(&local);
     ch_value a = ch_stk_pop(&local);
@@ -229,7 +229,7 @@ ch_stack_node *__s__u61(ch_stack_node **full) {
     }
 }
 
-ch_stack_node *__s__u45(ch_stack_node **full) {
+ch_stack_node *_mangle_(sub, "-")(ch_stack_node **full) {
     ch_stack_node *local = ch_stk_args(full, 2);
     ch_value b = ch_stk_pop(&local);
     ch_value a = ch_stk_pop(&local);
@@ -249,7 +249,7 @@ ch_stack_node *__s__u45(ch_stack_node **full) {
     return local;
 }
 
-ch_stack_node *__s__u43(ch_stack_node **full) {
+ch_stack_node *_mangle_(add, "+")(ch_stack_node **full) {
     ch_stack_node *local = ch_stk_args(full, 2);
     ch_value b = ch_stk_pop(&local);
     ch_value a = ch_stk_pop(&local);

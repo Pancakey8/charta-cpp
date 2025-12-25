@@ -1,6 +1,8 @@
 #pragma once
 #include <stddef.h>
 
+#define _mangle_(x, a) x
+
 typedef enum {
     CH_VALK_INT,
     CH_VALK_FLOAT,
@@ -61,13 +63,10 @@ void ch_stk_append(ch_stack_node **to, ch_stack_node *from);
 
 void ch_stk_delete(ch_stack_node **stk);
 
-ch_stack_node *__sprint(ch_stack_node **full);
-ch_stack_node *__sdup(ch_stack_node **full);
-ch_stack_node *__sswp(ch_stack_node **full);
-ch_stack_node *__sdbg(ch_stack_node **full);
-/// =
-ch_stack_node *__s__u61(ch_stack_node **full);
-/// +
-ch_stack_node *__s__u43(ch_stack_node **full);
-/// -
-ch_stack_node *__s__u45(ch_stack_node **full);
+ch_stack_node *_mangle_(print, "print")(ch_stack_node **full);
+ch_stack_node *_mangle_(dup, "dup")(ch_stack_node **full);
+ch_stack_node *_mangle_(swp, "swp")(ch_stack_node **full);
+ch_stack_node *_mangle_(dbg, "dbg")(ch_stack_node **full);
+ch_stack_node *_mangle_(equ_cmp, "=")(ch_stack_node **full);
+ch_stack_node *_mangle_(add, "+")(ch_stack_node **full);
+ch_stack_node *_mangle_(sub, "-")(ch_stack_node **full);

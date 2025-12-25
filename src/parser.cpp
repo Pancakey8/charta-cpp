@@ -82,7 +82,8 @@ bool parser::Lexer::parse_symbol() {
     auto start = cursor;
     while (char32_t c = peek()) {
         if (c == U'?' || c == U'[' || c == U']' || c == U'(' || c == U')' ||
-            c == U'{' || c == U'}' || c == U'"' || c == U'\'')
+            c == U'{' || c == U'}' || c == U'"' || c == U'\'' || c == U'→' ||
+            c == U'←' || c == U'↑' || c == U'↓')
             break;
         if (is_space(c))
             break;
@@ -137,6 +138,26 @@ bool parser::Lexer::parse_special() {
         output.emplace_back(
             Token{start, cursor, cursor - start, Token::RCurly, {}});
         return true;
+    case U'←':
+        pop();
+        output.emplace_back(
+            Token{start, cursor, cursor - start, Token::Left, {}});
+        return true;
+    case U'↑':
+        pop();
+        output.emplace_back(
+            Token{start, cursor, cursor - start, Token::Up, {}});
+        return true;
+    case U'→':
+        pop();
+        output.emplace_back(
+            Token{start, cursor, cursor - start, Token::Right, {}});
+        return true;
+    case U'↓':
+        pop();
+        output.emplace_back(
+            Token{start, cursor, cursor - start, Token::Down, {}});
+        return true;
     default:
         if (match("->")) {
             output.emplace_back(
@@ -150,15 +171,27 @@ bool parser::Lexer::parse_special() {
             return true;
         }
 
-        if (match("|^") || match("^|")) {
-            output.emplace_back(
-                Token{start, cursor, cursor - start, Token::Up, {}});
+        if (match("|^")) {
+            output.emplace_back(Token{start, cursor, 1, Token::Up, {}});
+            output.emplace_back(Token{start + 1, cursor, 1, Token::Space, {}});
             return true;
         }
 
-        if (match("|v") || match("^|")) {
-            output.emplace_back(
-                Token{start, cursor, cursor - start, Token::Down, {}});
+        if (match("^|")) {
+            output.emplace_back(Token{start, start + 1, 1, Token::Space, {}});
+            output.emplace_back(Token{start + 1, cursor, 1, Token::Up, {}});
+            return true;
+        }
+
+        if (match("|v")) {
+            output.emplace_back(Token{start, cursor, 1, Token::Down, {}});
+            output.emplace_back(Token{start + 1, cursor, 1, Token::Space, {}});
+            return true;
+        }
+
+        if (match("v|")) {
+            output.emplace_back(Token{start, start + 1, 1, Token::Space, {}});
+            output.emplace_back(Token{start + 1, cursor, 1, Token::Down, {}});
             return true;
         }
 

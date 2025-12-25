@@ -8,15 +8,19 @@ SRC := src/main.cpp src/parser.cpp src/traverser.cpp src/ir.cpp src/utf.cpp src/
 OBJ := $(SRC:.cpp=.o)
 
 CORE_SRC := core/core.c
+CORE_H := core/core.h
 CORE_OBJ := $(CORE_SRC:.c=.o)
 
-all: core charta
+all: core charta mangler
 
 charta: $(OBJ)
 	$(CXX) $(LDFLAGS) -o charta $^
 
-core: $(CORE_OBJ)
+core: $(CORE_OBJ) $(CORE_H)
 	ar rcs libcore.a $^
+
+mangler: src/mangler.cpp src/utf.cpp
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o mangler $^
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
@@ -24,5 +28,13 @@ core: $(CORE_OBJ)
 %.o: %.c
 	$(CC) $(CCFLAGS) -c -o $@ $<
 
+core/%.c: core/%.pre.c mangler
+	./process.sh $< $@
+
+core/%.h: core/%.pre.h mangler
+	./process.sh $< $@
+
+.PRECIOUS: core/%.c core/%.h
+
 clean:
-	rm -f $(OBJ) charta $(CORE_OBJ) libcore.a
+	rm -f $(OBJ) charta $(CORE_OBJ) libcore.a core/core.h core/core.c mangler

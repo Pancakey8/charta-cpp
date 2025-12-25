@@ -4,3 +4,6 @@ src/*.o
 .cache/
 libcore.a
 core/*.o
+core/core.c
+core/core.h
+mangler
