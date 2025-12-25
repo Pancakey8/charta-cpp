@@ -61,4 +61,11 @@ void ch_stk_append(ch_stack_node **to, ch_stack_node *from);
 
 void ch_stk_delete(ch_stack_node **stk);
 
-ch_stack_node *print(ch_stack_node **full);
+ch_stack_node *__sprint(ch_stack_node **full);
+ch_stack_node *__sdup(ch_stack_node **full);
+/// =
+ch_stack_node *__s__u61(ch_stack_node **full);
+/// +
+ch_stack_node *__s__u43(ch_stack_node **full);
+/// -
+ch_stack_node *__s__u45(ch_stack_node **full);

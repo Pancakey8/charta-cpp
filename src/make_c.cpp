@@ -12,8 +12,6 @@
 #include <unordered_map>
 
 std::string mangle(std::string name) {
-    if (name == "main")
-        return "__imain";
     auto permitted = [](char32_t c, bool start = false) {
         if (start) {
             return (U'a' <= c && c <= U'z') || (U'A' <= c && c <= U'Z') ||
@@ -26,7 +24,7 @@ std::string mangle(std::string name) {
     auto escape = [](char32_t c) {
         return "__u" + std::to_string(static_cast<std::int32_t>(c));
     };
-    std::string mangled{};
+    std::string mangled{"__s"};
     for (std::size_t i = 0; i < name.size();) {
         if (name.compare(i, 3, "__u") == 0) {
             mangled += "__uE";
@@ -35,6 +33,11 @@ std::string mangle(std::string name) {
         }
         if (name.compare(i, 3, "__i") == 0) {
             mangled += "__iE";
+            i += 3;
+            continue;
+        }
+        if (name.compare(i, 3, "__s") == 0) {
+            mangled += "__sE";
             i += 3;
             continue;
         }
@@ -76,6 +79,11 @@ std::string name_of(parser::TypeSig type) {
     return res;
 }
 
+std::string get_temp() {
+    static std::size_t temp_counter = 0;
+    return "__itemp" + std::to_string(temp_counter++);
+}
+
 void emit_instrs(std::vector<ir::Instruction> body, std::string &out) {
     for (auto &ir : body) {
         switch (ir.kind) {
@@ -98,8 +106,10 @@ void emit_instrs(std::vector<ir::Instruction> body, std::string &out) {
             break;
         }
         case ir::Instruction::Call: {
-            out += "ch_stk_append(&__istack, " +
-                   mangle(std::get<std::string>(ir.value)) + "(&__istack));\n";
+            std::string tmp = get_temp();
+            out += "ch_stack_node*" + tmp + "=" +
+                   mangle(std::get<std::string>(ir.value)) + "(&__istack);\n";
+            out += "ch_stk_append(&__istack, " + tmp + ");\n";
             break;
         }
         case ir::Instruction::JumpTrue: {
@@ -140,7 +150,7 @@ std::string backend::c::make_c(Program prog) {
     }
     full += "\n\nint main(void) {\n";
     full += "ch_stack_node *stk = ch_stk_new();\n";
-    full += "__imain(&stk);\n";
+    full += "__smain(&stk);\n";
     full += "}";
     return full;
 }

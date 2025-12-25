@@ -520,12 +520,17 @@ std::optional<parser::FnDecl> parser::Parser::parse_fndecl() {
 }
 
 std::optional<parser::TopLevel> parser::Parser::parse_top_level() {
+    spaces();
     return parse_fndecl();
 }
 
 std::vector<parser::TopLevel> parser::Parser::parse_program() {
     std::vector<parser::TopLevel> tls{};
     while (auto p = peek()) {
+        std::size_t start = cursor;
+        spaces();
+        if (cursor != start)
+            continue;
         if (auto tl = parse_top_level()) {
             tls.emplace_back(*tl);
         } else {
