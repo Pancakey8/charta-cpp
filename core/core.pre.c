@@ -6,11 +6,11 @@
 
 ch_string ch_str_new(char const *data) {
     ch_string str;
-    size_t len = strlen(data + 1);
-    str.data = malloc(len);
+    size_t len = strlen(data);
+    str.data = malloc(len + 1);
     strcpy(str.data, data);
     str.len = len;
-    str.size = len;
+    str.size = len + 1;
     return str;
 }
 
@@ -52,6 +52,8 @@ char *ch_valk_name(ch_value_kind k) {
         return "char";
     case CH_VALK_STRING:
         return "string";
+    case CH_VALK_STACK:
+        return "stack";
     }
 }
 
@@ -66,6 +68,8 @@ char ch_valas_bool(ch_value v) {
 void ch_val_delete(ch_value *val) {
     if (val->kind == CH_VALK_STRING) {
         ch_str_delete(&val->value.s);
+    } else if (val->kind == CH_VALK_STACK) {
+        ch_stk_delete(&val->value.stk);
     }
     val->kind = -1;
 }
@@ -99,8 +103,13 @@ ch_value ch_stk_pop(ch_stack_node **stk) {
 }
 
 ch_stack_node *ch_stk_args(ch_stack_node **from, size_t n) {
-    if (n == 0 || *from == NULL)
+    if (n == 0)
         return NULL;
+
+    if (*from == NULL) {
+        printf("ERR: Tried to pop '%zu' arguments, but stack is empty.\n", n);
+        exit(1);
+    }
 
     ch_stack_node *args = *from;
     ch_stack_node *curr = *from;
@@ -147,27 +156,45 @@ void ch_stk_delete(ch_stack_node **stk) {
 void print_value(ch_value v) {
     switch (v.kind) {
     case CH_VALK_INT:
-        printf("%d\n", v.value.i);
+        printf("%d", v.value.i);
         break;
     case CH_VALK_FLOAT:
-        printf("%f\n", v.value.f);
+        printf("%f", v.value.f);
         break;
     case CH_VALK_BOOL:
-        printf("%b\n", v.value.b);
+        printf("%b", v.value.b);
         break;
     case CH_VALK_CHAR:
-        printf("'\\U%x'\n", v.value.i);
+        printf("'\\U%x'", v.value.i);
         break;
     case CH_VALK_STRING:
-        printf("%s\n", v.value.s.data);
+        printf("%s", v.value.s.data);
         break;
+    case CH_VALK_STACK: {
+        ch_stack_node *n = v.value.stk;
+        printf("[");
+        while (n) {
+            print_value(n->val);
+            if (n->next) {
+                printf(", ");
+            }
+            n = n->next;
+        }
+        printf("]");
     }
+    }
+}
+
+void println_value(ch_value v) {
+    print_value(v);
+    printf("\n");
 }
 
 ch_stack_node *_mangle_(print, "print")(ch_stack_node **full) {
     ch_stack_node *local = ch_stk_args(full, 1);
     ch_value v = ch_stk_pop(&local);
-    print_value(v);
+    println_value(v);
+    ch_val_delete(&v);
     return NULL;
 }
 
@@ -192,9 +219,10 @@ ch_stack_node *_mangle_(swp, "swp")(ch_stack_node **full) {
 ch_stack_node *_mangle_(dbg, "dbg")(ch_stack_node **full) {
     ch_stack_node *elem = *full;
     size_t i = 0;
+    printf("DEBUG:\n");
     while (elem) {
         printf("%zu | ", i);
-        print_value(elem->val);
+        println_value(elem->val);
         elem = elem->next;
     }
     return NULL;
@@ -209,24 +237,28 @@ ch_stack_node *_mangle_(equ_cmp, "=")(ch_stack_node **full) {
         return local;
     }
 
+    char res;
+
     switch (a.kind) {
     case CH_VALK_INT:
-        ch_stk_push(&local, ch_valof_bool(a.value.i == b.value.i));
-        return local;
+        res = a.value.i == b.value.i;
     case CH_VALK_FLOAT:
-        ch_stk_push(&local, ch_valof_bool(a.value.f == b.value.f));
-        return local;
+        res = a.value.f == b.value.f;
     case CH_VALK_BOOL:
-        ch_stk_push(&local, ch_valof_bool(a.value.b == b.value.b));
-        return local;
+        res = a.value.b == b.value.b;
     case CH_VALK_CHAR:
-        ch_stk_push(&local, ch_valof_bool(a.value.i == b.value.i));
-        return local;
+        res = a.value.i == b.value.i;
     case CH_VALK_STRING:
-        ch_stk_push(&local,
-                    ch_valof_bool(strcmp(a.value.s.data, b.value.s.data) == 0));
-        return local;
+        res = strcmp(a.value.s.data, b.value.s.data) == 0;
+    case CH_VALK_STACK:
+        printf("'=' not implemented between stacks\n");
+        exit(1);
     }
+
+    ch_stk_push(&local, ch_valof_bool(res));
+    ch_val_delete(&a);
+    ch_val_delete(&b);
+    return local;
 }
 
 ch_stack_node *_mangle_(sub, "-")(ch_stack_node **full) {
@@ -267,4 +299,14 @@ ch_stack_node *_mangle_(add, "+")(ch_stack_node **full) {
         exit(1);
     }
     return local;
+}
+
+ch_stack_node *_mangle_(boxstk, "box")(ch_stack_node **full) {
+    ch_value val;
+    val.kind = CH_VALK_STACK;
+    val.value.stk = *full;
+    ch_stack_node *stk = ch_stk_new();
+    ch_stk_push(&stk, val);
+    *full = NULL;
+    return stk;
 }

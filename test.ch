@@ -1,8 +1,7 @@
-fn fibo (x : int) -> (int) {
-→ dup 0 = ?  dup 1 = ?  dup 1 - fibo swp 2 - fibo +
-          ↓         v|
+fn foo (x : int) -> (int) {
+→ ⇈ 1 + ⇈ 2 + ↕ □
 }
 
 fn main () -> () {
--> 10 fibo print
+→ 10 foo print
 }

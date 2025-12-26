@@ -8,7 +8,8 @@ typedef enum {
     CH_VALK_FLOAT,
     CH_VALK_BOOL,
     CH_VALK_CHAR,
-    CH_VALK_STRING
+    CH_VALK_STRING,
+    CH_VALK_STACK
 } ch_value_kind;
 
 typedef struct {
@@ -21,6 +22,8 @@ ch_string ch_str_new(char const *data);
 
 void ch_str_delete(ch_string *str);
 
+struct ch_stack_node;
+
 typedef struct {
     ch_value_kind kind;
     union {
@@ -28,6 +31,7 @@ typedef struct {
         float f;
         char b;
         ch_string s;
+        struct ch_stack_node *stk;
     } value;
 } ch_value;
 
@@ -65,8 +69,18 @@ void ch_stk_delete(ch_stack_node **stk);
 
 ch_stack_node *_mangle_(print, "print")(ch_stack_node **full);
 ch_stack_node *_mangle_(dup, "dup")(ch_stack_node **full);
+ch_stack_node *_mangle_(dup2, "⇈")(ch_stack_node **full) {
+    return _mangle_(dup, "dup")(full);
+}
 ch_stack_node *_mangle_(swp, "swp")(ch_stack_node **full);
+ch_stack_node *_mangle_(swp2, "↕")(ch_stack_node **full) {
+    return _mangle_(swp, "swp")(full);
+}
 ch_stack_node *_mangle_(dbg, "dbg")(ch_stack_node **full);
 ch_stack_node *_mangle_(equ_cmp, "=")(ch_stack_node **full);
 ch_stack_node *_mangle_(add, "+")(ch_stack_node **full);
 ch_stack_node *_mangle_(sub, "-")(ch_stack_node **full);
+ch_stack_node *_mangle_(boxstk, "box")(ch_stack_node **full);
+ch_stack_node *_mangle_(boxstk2, "□")(ch_stack_node **full) {
+    return _mangle_(boxstk, "box")(full);
+}
