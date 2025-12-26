@@ -231,6 +231,14 @@ struct State {
     std::vector<checks::Type> stack;
 };
 
+auto get_label(std::vector<ir::Instruction> const &irs,
+               std::string const &label) {
+    return std::find_if(irs.begin(), irs.end(), [&label](auto &&ir) {
+        return ir.kind == ir::Instruction::Label &&
+               std::get<std::string>(ir.value) == label;
+    });
+}
+
 void checks::TypeChecker::verify(traverser::Function fn) {
     auto expected = sigs.at(fn.name);
     std::vector<Type> initial;
@@ -240,12 +248,20 @@ void checks::TypeChecker::verify(traverser::Function fn) {
     initial.insert(initial.end(), expected.args.begin(), expected.args.end());
 
     std::vector<State> states{State{0, initial}};
-    std::unordered_map<std::size_t, std::vector<Type>> labels{};
+    std::unordered_map<std::size_t, std::vector<Type>> been_to{};
 
     while (!states.empty()) {
         State &current = states.back();
         auto instr = fn.body[current.ip];
         auto &stack = current.stack;
+
+        if (been_to.contains(current.ip)) {
+            states.pop_back();
+            // TODO: Check convergence & effect
+            continue;
+        } else {
+            been_to[current.ip] = std::vector{stack};
+        }
 
         switch (instr.kind) {
         case ir::Instruction::PushInt:
@@ -276,11 +292,40 @@ void checks::TypeChecker::verify(traverser::Function fn) {
             ++current.ip;
             break;
         }
-        case ir::Instruction::JumpTrue:
+        case ir::Instruction::JumpTrue: {
+            if (stack.empty() || stack.back().kind != Type::Bool) {
+                throw CheckError(
+                    "Branch expected bool, got " +
+                        (stack.empty() ? "nothing" : stack.back().show()),
+                    fn.name);
+            }
+            stack.pop_back();
+            auto label_name = std::get<std::string>(instr.value);
+            auto label_pos = get_label(fn.body, label_name);
+            if (label_pos == fn.body.end()) {
+                throw CheckError("Attempted to jump to invalid label '" +
+                                     label_name + "'",
+                                 fn.name);
+            }
+            states.emplace_back(State{
+                static_cast<size_t>(std::distance(fn.body.cbegin(), label_pos)),
+                std::vector{stack}});
+            ++current.ip;
             break;
-        case ir::Instruction::Goto:
+        }
+        case ir::Instruction::Goto: {
+            auto label_name = std::get<std::string>(instr.value);
+            auto label_pos = get_label(fn.body, label_name);
+            if (label_pos == fn.body.end()) {
+                throw CheckError("Attempted to jump to invalid label '" +
+                                     label_name + "'",
+                                 fn.name);
+            }
+            current.ip = std::distance(fn.body.cbegin(), label_pos);
             break;
+        }
         case ir::Instruction::Label:
+            ++current.ip;
             break;
         case ir::Instruction::Exit: {
             auto have = stack.rbegin();

@@ -106,8 +106,14 @@ std::vector<Instruction> traverser::traverse(parser::Grid grid) {
     std::vector<Instruction> instrs{};
     std::unordered_set<Pos, PosHash> visited{};
     auto run_emit = [&](Pos dir, Pos pos, auto &&self) -> void {
+        // std::println("{}, {}, {}, {}", pos.x, pos.y, dir.x, dir.y);
         if (auto n = grid_at(grid, pos)) {
+            // std::println("{}, {}", static_cast<int>(n->kind), n->length);
+            auto next_pos = is_vert(dir) ? pos + dir : dir * n->length + pos;
             if (visited.contains(pos)) {
+                if (n->kind == parser::Node::Space) {
+                    self(dir, next_pos, self);
+                }
                 instrs.emplace_back(
                     Instruction{Instruction::GotoPos, IrPos{pos.x, pos.y}});
                 return;
@@ -118,7 +124,6 @@ std::vector<Instruction> traverser::traverse(parser::Grid grid) {
             for (std::size_t i = 0; i < n->length; ++i) {
                 visited.emplace(pos + Pos{1, 0} * i);
             }
-            auto next_pos = is_vert(dir) ? pos + dir : dir * n->length + pos;
             switch (n->kind) {
             case parser::Node::IntLit:
                 instrs.emplace_back(

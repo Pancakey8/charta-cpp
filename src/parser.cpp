@@ -140,23 +140,19 @@ bool parser::Lexer::parse_special() {
         return true;
     case U'←':
         pop();
-        output.emplace_back(
-            Token{start, cursor, cursor - start, Token::Left, {}});
+        output.emplace_back(Token{start, cursor, 1, Token::Left, {}});
         return true;
     case U'↑':
         pop();
-        output.emplace_back(
-            Token{start, cursor, cursor - start, Token::Up, {}});
+        output.emplace_back(Token{start, cursor, 1, Token::Up, {}});
         return true;
     case U'→':
         pop();
-        output.emplace_back(
-            Token{start, cursor, cursor - start, Token::Right, {}});
+        output.emplace_back(Token{start, cursor, 1, Token::Right, {}});
         return true;
     case U'↓':
         pop();
-        output.emplace_back(
-            Token{start, cursor, cursor - start, Token::Down, {}});
+        output.emplace_back(Token{start, cursor, 1, Token::Down, {}});
         return true;
     default:
         if (match("->")) {
