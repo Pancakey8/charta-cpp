@@ -330,3 +330,10 @@ ch_stack_node *_mangle_(boxstk, "box")(ch_stack_node **full) {
     *full = NULL;
     return stk;
 }
+
+ch_stack_node *_mangle_(pop, "pop")(ch_stack_node **full) {
+  ch_stack_node *local = ch_stk_args(full, 1, 0);
+  ch_value val = ch_stk_pop(&local);
+  ch_val_delete(&val);
+  return local;
+}

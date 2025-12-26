@@ -20,13 +20,28 @@ struct StackType {
     std::variant<std::vector<Type>, std::shared_ptr<Type>> val;
 
     std::string show() const;
+
+    bool operator==(StackType const &other) const;
 };
 
 struct Type {
-    enum Kind { Int, Float, Bool, Char, String, Union, Stack, Generic } kind;
-    std::variant<std::string, StackType, std::vector<Type>> val;
+    enum Kind {
+        Int,
+        Float,
+        Bool,
+        Char,
+        String,
+        Union,
+        Stack,
+        Generic,
+        Many
+    } kind;
+    std::variant<std::string, StackType, std::vector<Type>,
+                 std::shared_ptr<Type>>
+        val;
 
     std::string show() const;
+    bool operator==(Type const &other) const;
 };
 
 struct Function {

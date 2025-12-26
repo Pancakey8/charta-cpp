@@ -3,7 +3,20 @@
 #include "parser.hpp"
 #include <algorithm>
 #include <cassert>
+#include <functional>
 #include <print>
+
+void print_stk(std::vector<checks::Type> const &stk) {
+    if (stk.empty()) {
+        std::println("[]");
+    } else {
+        std::string s{stk.front().show()};
+        for (auto elem = stk.begin() + 1; elem != stk.end(); ++elem) {
+            s += ", " + elem->show();
+        }
+        std::println("[{}]", s);
+    }
+}
 
 checks::Type generic(std::string const x) {
     return checks::Type{checks::Type::Generic, "#" + x};
@@ -14,10 +27,18 @@ template <typename... Ts> checks::Type tsum(Ts... types) {
                         std::vector<checks::Type>{types...}};
 }
 
+checks::Type tsum(std::vector<checks::Type> types) {
+    return checks::Type{checks::Type::Union, std::move(types)};
+}
+
 checks::Type tstack_many(checks::Type const t) {
     return checks::Type{checks::Type::Stack,
                         checks::StackType{checks::StackType::Many,
                                           std::make_shared<checks::Type>(t)}};
+}
+
+checks::Type many(checks::Type const t) {
+    return checks::Type{checks::Type::Many, std::make_shared<checks::Type>(t)};
 }
 
 static const checks::Type tbool = checks::Type{checks::Type::Bool, {}};
@@ -109,6 +130,12 @@ bool is_matching(checks::Type got, checks::Type expected) {
         expected.kind == checks::Type::Generic) {
         assert(false && "No generics in is_matching");
     }
+    if (got.kind == checks::Type::Many) {
+        return is_matching(*std::get<3>(got.val), expected);
+    }
+    if (expected.kind == checks::Type::Many) {
+        return is_matching(got, *std::get<3>(expected.val));
+    }
     if (expected.kind == checks::Type::Union) {
         for (auto &t : std::get<2>(expected.val)) {
             if (is_matching(got, t)) {
@@ -182,7 +209,9 @@ void checks::TypeChecker::try_apply(std::vector<Type> &stack, Function sig,
                              caller};
         }
         auto top = stack.back();
-        stack.pop_back();
+        if (top.kind != Type::Many) {
+            stack.pop_back();
+        }
         if (top.kind == Type::Generic) {
             auto tag = std::get<std::string>(top.val);
             for (auto &el : stack) {
@@ -239,6 +268,92 @@ auto get_label(std::vector<ir::Instruction> const &irs,
     });
 }
 
+checks::Type union_collapse(std::vector<checks::Type> const &types) {
+    std::vector<checks::Type> elems{};
+
+    std::function<void(checks::Type const &)> collect =
+        [&elems, &collect](checks::Type const &t) {
+            if (t.kind == checks::Type::Union) {
+                for (auto &u : std::get<2>(t.val)) {
+                    collect(u);
+                }
+            } else if (t.kind == checks::Type::Many) {
+                collect(*std::get<3>(t.val));
+            } else {
+                elems.emplace_back(t);
+            }
+        };
+
+    for (auto &t : types)
+        collect(t);
+
+    std::vector<checks::Type> uniq;
+    for (auto &t : elems) {
+        if (std::none_of(uniq.begin(), uniq.end(), [&](auto &u) {
+                return is_matching(t, u) && is_matching(u, t);
+            })) {
+            uniq.push_back(t);
+        }
+    }
+
+    if (uniq.size() == 1)
+        return uniq.front();
+
+    return tsum(uniq);
+}
+
+bool unify(std::vector<checks::Type> &prev,
+           std::vector<checks::Type> &current) {
+    auto p = prev.rbegin();
+    auto c = current.rbegin();
+
+    std::vector<checks::Type> suffix{};
+
+    for (; p != prev.rend() && c != current.rend(); ++p, ++c) {
+        if (is_matching(*c, *p)) {
+            suffix.emplace_back(*p);
+        } else {
+            suffix.emplace_back(tsum(*p, *c));
+        }
+    }
+
+    std::vector<checks::Type> result{};
+
+    if (p == prev.rend() && c == current.rend()) {
+        result = suffix;
+        std::reverse(result.begin(), result.end());
+        // } else if (p == prev.rend() || c == current.rend()) {
+    } else {
+        std::vector<checks::Type> extras{};
+        for (; p != prev.rend(); ++p) {
+            extras.emplace_back(*p);
+        }
+
+        for (; c != current.rend(); ++c) {
+            extras.emplace_back(*c);
+        }
+
+        extras.insert(extras.end(), suffix.begin(), suffix.end());
+
+        checks::Type collapsed = union_collapse(extras);
+
+        result.emplace_back(many(collapsed));
+    }
+
+    // print_stk(result);
+    // print_stk(prev);
+    // std::println("- - - -");
+
+    if (result == prev) {
+        std::println("Converged:");
+        print_stk(prev);
+        return false;
+    }
+
+    prev = std::move(result);
+    return true;
+}
+
 void checks::TypeChecker::verify(traverser::Function fn) {
     auto expected = sigs.at(fn.name);
     std::vector<Type> initial;
@@ -250,17 +365,26 @@ void checks::TypeChecker::verify(traverser::Function fn) {
     std::vector<State> states{State{0, initial}};
     std::unordered_map<std::size_t, std::vector<Type>> been_to{};
 
+    std::println("STATES - {}", fn.name);
     while (!states.empty()) {
         State &current = states.back();
         auto instr = fn.body[current.ip];
         auto &stack = current.stack;
 
+        std::println("State count: {}", states.size());
+        std::println("On {}", instr.show());
+        print_stk(stack);
+        std::println("");
+
         if (been_to.contains(current.ip)) {
-            states.pop_back();
-            // TODO: Check convergence & effect
-            continue;
+            auto &prev = been_to[current.ip];
+            if (!unify(prev, stack)) {
+                states.pop_back();
+                continue;
+            }
         } else {
-            been_to[current.ip] = std::vector{stack};
+            // Enough to store labels?
+            // been_to[current.ip] = std::vector{stack};
         }
 
         switch (instr.kind) {
@@ -307,10 +431,10 @@ void checks::TypeChecker::verify(traverser::Function fn) {
                                      label_name + "'",
                                  fn.name);
             }
+            ++current.ip;
             states.emplace_back(State{
                 static_cast<size_t>(std::distance(fn.body.cbegin(), label_pos)),
                 std::vector{stack}});
-            ++current.ip;
             break;
         }
         case ir::Instruction::Goto: {
@@ -325,6 +449,8 @@ void checks::TypeChecker::verify(traverser::Function fn) {
             break;
         }
         case ir::Instruction::Label:
+            if (!been_to.contains(current.ip))
+                been_to[current.ip] = std::vector{stack};
             ++current.ip;
             break;
         case ir::Instruction::Exit: {
@@ -401,6 +527,9 @@ std::string checks::Type::show() const {
         }
         return un;
     }
+    case Many: {
+        return "many(" + std::get<3>(val)->show() + ")";
+    }
     }
 }
 
@@ -441,7 +570,10 @@ static const std::unordered_map<std::string, checks::Function> internal_sigs {
   {"-",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tsum(tint, tfloat)} }},
 
   {"box", { {}, {tstack_any}, true, {} }},
-  {"□", { {}, {tstack_any}, true, {} }},
+  {"□",   { {}, {tstack_any}, true, {} }},
+
+  {"pop", { {generic("a")}, {} }},
+  {"◌",   { {generic("a")}, {} }},
 
   {"print", { {generic("a")}, {} } }
 };
@@ -449,3 +581,49 @@ static const std::unordered_map<std::string, checks::Function> internal_sigs {
 
 checks::TypeChecker::TypeChecker(std::vector<traverser::Function> fns)
     : fns(std::move(fns)), sigs(internal_sigs) {}
+
+bool checks::Type::operator==(Type const &other) const {
+    if (kind != other.kind)
+        return false;
+
+    switch (kind) {
+    case Int:
+    case Float:
+    case Bool:
+    case Char:
+    case String:
+        return true;
+    case Union: {
+        auto const &a = std::get<2>(val);
+        auto const &b = std::get<2>(other.val);
+        if (a.size() != b.size())
+            return false;
+        for (auto &t : a) {
+            if (std::none_of(b.begin(), b.end(),
+                             [&](auto &u) { return t == u; }))
+                return false;
+        }
+        return true;
+    }
+    case Stack:
+        return std::get<1>(val) == std::get<1>(other.val);
+    case Generic:
+        return std::get<0>(val) == std::get<0>(other.val);
+    case Many:
+        return *std::get<3>(val) == *std::get<3>(other.val);
+    }
+}
+
+bool checks::StackType::operator==(StackType const &other) const {
+    if (kind != other.kind)
+        return false;
+
+    switch (kind) {
+    case Exact:
+        return std::get<0>(val) == std::get<0>(other.val);
+    case Many:
+        return *std::get<1>(val) == *std::get<1>(other.val);
+    case Unknown:
+        return true;
+    }
+}

@@ -84,3 +84,7 @@ ch_stack_node *_mangle_(boxstk, "box")(ch_stack_node **full);
 static inline ch_stack_node *_mangle_(boxstk2, "□")(ch_stack_node **full) {
     return _mangle_(boxstk, "box")(full);
 }
+ch_stack_node *_mangle_(pop, "pop")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(pop2, "◌")(ch_stack_node **full) {
+    return _mangle_(pop, "pop")(full);
+}
