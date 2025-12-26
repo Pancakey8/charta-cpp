@@ -33,15 +33,18 @@ struct Function {
     std::vector<Type> args;
     std::vector<Type> rets;
     bool is_ellipses{false};
+    std::optional<Type> returns_many{std::nullopt};
 
-    Function() : args{}, rets{}, is_ellipses{false} {}
+    Function()
+        : args{}, rets{}, is_ellipses{false}, returns_many{std::nullopt} {}
 
     Function(std::vector<Type> args, std::vector<Type> rets)
         : args(std::move(args)), rets(std::move(rets)), is_ellipses{false} {}
 
-    Function(std::vector<Type> args, std::vector<Type> rets, bool is_ellipses)
+    Function(std::vector<Type> args, std::vector<Type> rets, bool is_ellipses,
+             std::optional<Type> returns_many)
         : args(std::move(args)), rets(std::move(rets)),
-          is_ellipses{is_ellipses} {}
+          is_ellipses{is_ellipses}, returns_many{std::move(returns_many)} {}
 };
 
 class TypeChecker {

@@ -14,6 +14,12 @@ template <typename... Ts> checks::Type tsum(Ts... types) {
                         std::vector<checks::Type>{types...}};
 }
 
+checks::Type tstack_many(checks::Type const t) {
+    return checks::Type{checks::Type::Stack,
+                        checks::StackType{checks::StackType::Many,
+                                          std::make_shared<checks::Type>(t)}};
+}
+
 static const checks::Type tbool = checks::Type{checks::Type::Bool, {}};
 static const checks::Type tint = checks::Type{checks::Type::Int, {}};
 static const checks::Type tfloat = checks::Type{checks::Type::Float, {}};
@@ -44,6 +50,8 @@ checks::Type decl2type(parser::TypeSig decl, std::string fname) {
         return {checks::Type::Char, {}};
     } else if (decl.name == "string") {
         return {checks::Type::String, {}};
+    } else if (decl.name == "stack") {
+        return tstack_any;
     } else {
         if (decl.name.starts_with("#")) {
             return {checks::Type::Generic, decl.name};
@@ -65,10 +73,7 @@ void checks::TypeChecker::collect_sigs() {
             func.args.emplace_back(decl2type(type, decl.name));
         }
         if (decl.rets.rest) {
-            func.args.emplace_back(
-                Type{Type::Stack, StackType{StackType::Many,
-                                            std::make_shared<Type>(decl2type(
-                                                *decl.rets.rest, decl.name))}});
+            func.returns_many = decl2type(*decl.rets.rest, decl.name);
         }
         func.rets.reserve(decl.rets.args.size());
         for (auto &type : decl.rets.args) {
@@ -91,7 +96,11 @@ void checks::TypeChecker::collect_sigs() {
                 rets += ", " + elem->show();
             }
         }
-        std::println("fn {} :: ({}) -> ({})", decl.name, args, rets);
+        std::string ellipses{func.is_ellipses ? ", ..." : ""};
+        std::string retmany{
+            func.returns_many ? ", ..." + func.returns_many->show() : ""};
+        std::println("fn {} :: ({}{}) -> ({}{})", decl.name, args, ellipses,
+                     rets, retmany);
     }
 }
 
@@ -206,6 +215,10 @@ void checks::TypeChecker::try_apply(std::vector<Type> &stack, Function sig,
     }
 
     stack.insert(stack.end(), sig.rets.begin(), sig.rets.end());
+
+    if (sig.returns_many) {
+        stack.emplace_back(tstack_many(*sig.returns_many));
+    }
 }
 
 void checks::TypeChecker::verify(traverser::Function fn) {
@@ -290,6 +303,17 @@ exit:
                              fn.name};
         }
     }
+
+    if (expected.returns_many) {
+        for (; have != stack.rend(); ++have) {
+            if (!is_matching(*have, *expected.returns_many)) {
+                throw CheckError{std::format("Needed to return '{}', got '{}'",
+                                             expected.returns_many->show(),
+                                             have->show()),
+                                 fn.name};
+            }
+        }
+    }
 }
 
 void checks::TypeChecker::check() {
@@ -316,6 +340,14 @@ std::string checks::Type::show() const {
     }
     case Generic: {
         return std::get<std::string>(val);
+    }
+    case Union: {
+        auto vals = std::get<2>(val);
+        std::string un{vals.front().show()};
+        for (auto v = vals.begin() + 1; v != vals.end(); ++v) {
+            un += " | " + v->show();
+        }
+        return un;
     }
     }
 }
@@ -356,8 +388,8 @@ static const std::unordered_map<std::string, checks::Function> internal_sigs {
 
   {"-",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tsum(tint, tfloat)} }},
 
-  {"box", { {}, {tstack_any}, true }},
-  {"□", { {}, {tstack_any}, true }},
+  {"box", { {}, {tstack_any}, true, {} }},
+  {"□", { {}, {tstack_any}, true, {} }},
 
   {"print", { {generic("a")}, {} } }
 };
