@@ -78,11 +78,33 @@ void ch_val_delete(ch_value *val) {
     val->kind = -1;
 }
 
+ch_value ch_valcpy(ch_value const *v);
+
+ch_stack_node *ch_stk_copy(ch_stack_node *stk) {
+    ch_stack_node *out = NULL;
+    ch_stack_node **tail = &out;
+
+    while (stk) {
+        ch_stack_node *node = malloc(sizeof(ch_stack_node));
+        node->val = ch_valcpy(&stk->val);
+        node->next = NULL;
+
+        *tail = node;
+        tail = &node->next;
+
+        stk = stk->next;
+    }
+
+    return out;
+}
+
 ch_value ch_valcpy(ch_value const *v) {
     ch_value other;
     other.kind = v->kind;
     if (v->kind == CH_VALK_STRING) {
         other.value.s = ch_str_new(v->value.s.data);
+    } else if (v->kind == CH_VALK_STACK) {
+        other.value.stk = ch_stk_copy(v->value.stk);
     } else {
         other.value = v->value;
     }
@@ -332,8 +354,24 @@ ch_stack_node *_mangle_(boxstk, "box")(ch_stack_node **full) {
 }
 
 ch_stack_node *_mangle_(pop, "pop")(ch_stack_node **full) {
-  ch_stack_node *local = ch_stk_args(full, 1, 0);
-  ch_value val = ch_stk_pop(&local);
-  ch_val_delete(&val);
-  return local;
+    ch_stack_node *local = ch_stk_args(full, 1, 0);
+    ch_value val = ch_stk_pop(&local);
+    ch_val_delete(&val);
+    return local;
+}
+
+ch_stack_node *_mangle_(fst_pop, "fst!")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 1, 0);
+    if (local->val.kind != CH_VALK_STACK) {
+        printf("ERR: '⊢!' expected stack, got '%s'\n",
+               ch_valk_name(local->val.kind));
+        exit(1);
+    }
+    if (local->val.value.stk == NULL) {
+        printf("ERR: '⊢!' got empty stack");
+        exit(1);
+    }
+    ch_value val = ch_stk_pop(&local->val.value.stk);
+    ch_stk_push(&local, val);
+    return local;
 }

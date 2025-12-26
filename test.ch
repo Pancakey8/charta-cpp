@@ -1,9 +1,8 @@
+fn operate (a : [int]) -> ([int]) {
+→ ⊢! ◌
+}
+
 fn main () -> () {
-→ 3 ⇈ 3 = ?  1 2 =? dbg
-          ↓       ↓
-         'a'      5
-            
-    ↑   ↕ ←
-    ↑             ←
+→ 1 2 3 4 5 □ operate print
 }
 

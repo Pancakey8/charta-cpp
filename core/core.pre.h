@@ -61,6 +61,8 @@ void ch_stk_push(ch_stack_node **stk, ch_value val);
 
 ch_value ch_stk_pop(ch_stack_node **stk);
 
+ch_stack_node *ch_stk_copy(ch_stack_node *stk);
+
 ch_stack_node *ch_stk_args(ch_stack_node **from, size_t n, char is_rest);
 
 void ch_stk_append(ch_stack_node **to, ch_stack_node *from);
@@ -87,4 +89,8 @@ static inline ch_stack_node *_mangle_(boxstk2, "□")(ch_stack_node **full) {
 ch_stack_node *_mangle_(pop, "pop")(ch_stack_node **full);
 static inline ch_stack_node *_mangle_(pop2, "◌")(ch_stack_node **full) {
     return _mangle_(pop, "pop")(full);
+}
+ch_stack_node *_mangle_(fst_pop, "fst!")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(fst_pop2, "⊢!")(ch_stack_node **full) {
+    return _mangle_(fst_pop, "fst!")(full);
 }

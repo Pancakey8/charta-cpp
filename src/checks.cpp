@@ -128,7 +128,7 @@ void checks::TypeChecker::collect_sigs() {
 bool is_matching(checks::Type got, checks::Type expected) {
     if (got.kind == checks::Type::Generic ||
         expected.kind == checks::Type::Generic) {
-        assert(false && "No generics in is_matching");
+        return true;
     }
     if (got.kind == checks::Type::Many) {
         return is_matching(*std::get<3>(got.val), expected);
@@ -247,6 +247,10 @@ void checks::TypeChecker::try_apply(std::vector<Type> &stack, Function sig,
                              caller};
         }
     }
+
+    if (sig.is_ellipses) {
+      stack.clear();
+    }        
 
     stack.insert(stack.end(), sig.rets.begin(), sig.rets.end());
 
@@ -574,6 +578,9 @@ static const std::unordered_map<std::string, checks::Function> internal_sigs {
 
   {"pop", { {generic("a")}, {} }},
   {"◌",   { {generic("a")}, {} }},
+
+  {"fst!", { {tstack_any}, {generic("a"), tstack_any} }},
+  {"⊢!",   { {tstack_any}, {generic("a"), tstack_any} }},
 
   {"print", { {generic("a")}, {} } }
 };
