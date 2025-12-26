@@ -25,8 +25,8 @@ mangler: src/mangler.cpp src/utf.cpp
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-%.o: %.c
-	$(CC) $(CCFLAGS) -c -o $@ $<
+core/%.o: core/%.c core/%.h
+	$(CC) $(CCFLAGS) -DPRE=1 -c -o $@ $<
 
 core/%.c: core/%.pre.c mangler
 	./process.sh $< $@

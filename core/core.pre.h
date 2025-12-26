@@ -69,11 +69,11 @@ void ch_stk_delete(ch_stack_node **stk);
 
 ch_stack_node *_mangle_(print, "print")(ch_stack_node **full);
 ch_stack_node *_mangle_(dup, "dup")(ch_stack_node **full);
-ch_stack_node *_mangle_(dup2, "⇈")(ch_stack_node **full) {
+static inline ch_stack_node *_mangle_(dup2, "⇈")(ch_stack_node **full) {
     return _mangle_(dup, "dup")(full);
 }
 ch_stack_node *_mangle_(swp, "swp")(ch_stack_node **full);
-ch_stack_node *_mangle_(swp2, "↕")(ch_stack_node **full) {
+static inline ch_stack_node *_mangle_(swp2, "↕")(ch_stack_node **full) {
     return _mangle_(swp, "swp")(full);
 }
 ch_stack_node *_mangle_(dbg, "dbg")(ch_stack_node **full);
@@ -81,6 +81,6 @@ ch_stack_node *_mangle_(equ_cmp, "=")(ch_stack_node **full);
 ch_stack_node *_mangle_(add, "+")(ch_stack_node **full);
 ch_stack_node *_mangle_(sub, "-")(ch_stack_node **full);
 ch_stack_node *_mangle_(boxstk, "box")(ch_stack_node **full);
-ch_stack_node *_mangle_(boxstk2, "□")(ch_stack_node **full) {
+static inline ch_stack_node *_mangle_(boxstk2, "□")(ch_stack_node **full) {
     return _mangle_(boxstk, "box")(full);
 }

@@ -1,4 +1,8 @@
+#ifdef PRE
+#include "core.h"
+#else
 #include "core.pre.h"
+#endif
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -242,14 +246,19 @@ ch_stack_node *_mangle_(equ_cmp, "=")(ch_stack_node **full) {
     switch (a.kind) {
     case CH_VALK_INT:
         res = a.value.i == b.value.i;
+        break;
     case CH_VALK_FLOAT:
         res = a.value.f == b.value.f;
+        break;
     case CH_VALK_BOOL:
         res = a.value.b == b.value.b;
+        break;
     case CH_VALK_CHAR:
         res = a.value.i == b.value.i;
+        break;
     case CH_VALK_STRING:
         res = strcmp(a.value.s.data, b.value.s.data) == 0;
+        break;
     case CH_VALK_STACK:
         printf("'=' not implemented between stacks\n");
         exit(1);
