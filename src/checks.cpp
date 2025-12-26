@@ -118,7 +118,12 @@ bool is_matching(checks::Type got, checks::Type expected) {
         return false;
     }
     if (got.kind == checks::Type::Union) {
-        assert(false && "Union is not a concrete type");
+        for (auto &t : std::get<2>(got.val)) {
+            if (is_matching(t, expected)) {
+                return true;
+            }
+        }
+        return false;
     }
     if (got.kind == checks::Type::Stack &&
         expected.kind == checks::Type::Stack) {
@@ -221,31 +226,46 @@ void checks::TypeChecker::try_apply(std::vector<Type> &stack, Function sig,
     }
 }
 
+struct State {
+    std::size_t ip;
+    std::vector<checks::Type> stack;
+};
+
 void checks::TypeChecker::verify(traverser::Function fn) {
     auto expected = sigs.at(fn.name);
-    std::vector<Type> stack;
+    std::vector<Type> initial;
     if (expected.is_ellipses) {
-        stack.emplace_back(tstack_any);
+        initial.emplace_back(tstack_any);
     }
-    stack.insert(stack.end(), expected.args.begin(), expected.args.end());
-    std::unordered_map<std::string, std::vector<Type>> labels{};
+    initial.insert(initial.end(), expected.args.begin(), expected.args.end());
 
-    for (auto instr = fn.body.begin(); instr != fn.body.end(); ++instr) {
-        switch (instr->kind) {
+    std::vector<State> states{State{0, initial}};
+    std::unordered_map<std::size_t, std::vector<Type>> labels{};
+
+    while (!states.empty()) {
+        State &current = states.back();
+        auto instr = fn.body[current.ip];
+        auto &stack = current.stack;
+
+        switch (instr.kind) {
         case ir::Instruction::PushInt:
-            stack.push_back(Type{Type::Int, {}});
+            stack.emplace_back(tint);
+            ++current.ip;
             break;
         case ir::Instruction::PushFloat:
-            stack.push_back(Type{Type::Float, {}});
+            stack.emplace_back(tfloat);
+            ++current.ip;
             break;
         case ir::Instruction::PushChar:
-            stack.push_back(Type{Type::Char, {}});
+            stack.emplace_back(tchar);
+            ++current.ip;
             break;
         case ir::Instruction::PushStr:
-            stack.push_back(Type{Type::String, {}});
+            stack.emplace_back(tstring);
+            ++current.ip;
             break;
         case ir::Instruction::Call: {
-            auto callee = std::get<std::string>(instr->value);
+            auto callee = std::get<std::string>(instr.value);
             if (!sigs.contains(callee)) {
                 throw CheckError(
                     std::format("Attempted to call undefined function '{}'",
@@ -253,65 +273,52 @@ void checks::TypeChecker::verify(traverser::Function fn) {
                     fn.name);
             }
             try_apply(stack, sigs[callee], fn.name, callee);
+            ++current.ip;
             break;
         }
-        case ir::Instruction::JumpTrue: {
-            if (stack.empty() || stack.back().kind != Type::Bool) {
-                throw CheckError{"Hit branch without a boolean on stack",
-                                 fn.name};
-            }
-            stack.pop_back();
-            assert(false && "TODO: JumpTrue");
+        case ir::Instruction::JumpTrue:
             break;
-        }
-        case ir::Instruction::Goto: {
-            std::string target = std::get<std::string>(instr->value);
-            auto loc = std::find_if(
-                fn.body.begin(), fn.body.end(), [&target](auto &&i) {
-                    return i.kind == ir::Instruction::Label &&
-                           std::get<std::string>(i.value) == target;
-                });
-            if (loc == fn.body.end()) {
-                throw CheckError{"Attempt to jump at invalid label", fn.name};
-            }
+        case ir::Instruction::Goto:
             break;
-        }
         case ir::Instruction::Label:
             break;
-        case ir::Instruction::Exit:
-            goto exit;
+        case ir::Instruction::Exit: {
+            auto have = stack.rbegin();
+            auto want = expected.rets.rbegin();
+
+            for (; want != expected.rets.rend(); ++have, ++want) {
+                if (have == stack.rend()) {
+                    throw CheckError{
+                        std::format("Needed to return '{}', got nothing",
+                                    want->show()),
+                        fn.name};
+                }
+                if (!is_matching(*have, *want)) {
+                    throw CheckError{
+                        std::format("Needed to return '{}', got '{}'",
+                                    want->show(), have->show()),
+                        fn.name};
+                }
+            }
+
+            if (expected.returns_many) {
+                for (; have != stack.rend(); ++have) {
+                    if (!is_matching(*have, *expected.returns_many)) {
+                        throw CheckError{
+                            std::format("Needed to return '{}', got '{}'",
+                                        expected.returns_many->show(),
+                                        have->show()),
+                            fn.name};
+                    }
+                }
+            }
+            states.pop_back();
             break;
+        }
         case ir::Instruction::GotoPos:
         case ir::Instruction::LabelPos:
-            assert(false && "Unreachable pos instructions in typechecker");
+            assert(false && "Unreachable instruction in type check");
             break;
-        }
-    }
-exit:
-    auto have = stack.rbegin();
-    auto want = expected.rets.rbegin();
-
-    for (; want != expected.rets.rend(); ++have, ++want) {
-        if (have == stack.rend()) {
-            throw CheckError{
-                std::format("Needed to return '{}', got nothing", want->show()),
-                fn.name};
-        }
-        if (!is_matching(*have, *want)) {
-            throw CheckError{std::format("Needed to return '{}', got '{}'",
-                                         want->show(), have->show()),
-                             fn.name};
-        }
-    }
-
-    if (expected.returns_many) {
-        for (; have != stack.rend(); ++have) {
-            if (!is_matching(*have, *expected.returns_many)) {
-                throw CheckError{std::format("Needed to return '{}', got '{}'",
-                                             expected.returns_many->show(),
-                                             have->show()),
-                                 fn.name};
-            }
         }
     }
 }
