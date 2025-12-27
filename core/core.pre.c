@@ -266,39 +266,41 @@ ch_stack_node *_mangle_(dbg, "dbg")(ch_stack_node **full) {
     return NULL;
 }
 
+char val_equals(ch_value const *v1, ch_value const *v2) {
+    if (v1->kind != v2->kind)
+        return 0;
+
+    switch (v1->kind) {
+    case CH_VALK_INT:
+      return v1->value.i == v2->value.i;
+    case CH_VALK_FLOAT:
+      return v1->value.f == v2->value.f;
+    case CH_VALK_BOOL:
+      return v1->value.b == v2->value.b;
+    case CH_VALK_CHAR:
+      return v1->value.i == v2->value.i;
+    case CH_VALK_STRING:
+      return strcmp(v1->value.s.data, v2->value.s.data) == 0;
+    case CH_VALK_STACK: {
+      ch_stack_node *s1 = v1->value.stk;
+      ch_stack_node *s2 = v2->value.stk;
+      while (s1 != NULL && s2 != NULL) {
+          if (!val_equals(&s1->val, &s2->val))
+              return 0;
+          s1 = s1->next;
+          s2 = s2->next;
+      }
+      return s1 == NULL && s2 == NULL;
+    }        
+    }
+}
+
 ch_stack_node *_mangle_(equ_cmp, "=")(ch_stack_node **full) {
     ch_stack_node *local = ch_stk_args(full, 2, 0);
     ch_value b = ch_stk_pop(&local);
     ch_value a = ch_stk_pop(&local);
-    if (a.kind != b.kind) {
-        ch_stk_push(&local, ch_valof_bool(0));
-        return local;
-    }
 
-    char res;
-
-    switch (a.kind) {
-    case CH_VALK_INT:
-        res = a.value.i == b.value.i;
-        break;
-    case CH_VALK_FLOAT:
-        res = a.value.f == b.value.f;
-        break;
-    case CH_VALK_BOOL:
-        res = a.value.b == b.value.b;
-        break;
-    case CH_VALK_CHAR:
-        res = a.value.i == b.value.i;
-        break;
-    case CH_VALK_STRING:
-        res = strcmp(a.value.s.data, b.value.s.data) == 0;
-        break;
-    case CH_VALK_STACK:
-        printf("'=' not implemented between stacks\n");
-        exit(1);
-    }
-
-    ch_stk_push(&local, ch_valof_bool(res));
+    ch_stk_push(&local, ch_valof_bool(val_equals(&a, &b)));
     ch_val_delete(&a);
     ch_val_delete(&b);
     return local;
@@ -608,4 +610,26 @@ ch_stack_node *_mangle_(mod, "%")(ch_stack_node **full) {
         exit(1);
     }
     return local;
+}
+
+ch_stack_node *_mangle_(ins, "ins")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 2, 0);
+    if (local->next->val.kind != CH_VALK_STACK) {
+        printf("ERR: 'ins' expected stack, got '%s'",
+               ch_valk_name(local->next->val.kind));
+        exit(1);
+    }
+    ch_value val = ch_stk_pop(&local);
+    ch_stk_push(&local->val.value.stk, val);
+    return local;
+}
+
+ch_stack_node *_mangle_(rot_rev, "rot-")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 3, 0);
+    ch_stack_node *b = local->next;
+    ch_stack_node *c = b->next;
+    ch_stack_node *rest = c->next;
+    c->next = local;
+    local->next = rest;
+    return b;
 }

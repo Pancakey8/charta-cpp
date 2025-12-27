@@ -229,7 +229,7 @@ std::string escaped(char32_t c) {
     case U'\t':
         return "\\t";
     default:
-        return std::string(1, c);
+        return encode_utf8(c);
     }
 }
 

@@ -588,6 +588,11 @@ static const std::unordered_map<std::string, checks::Function> internal_sigs {
   {"↻",   { {generic("a"), generic("b"), generic("c")},
             {generic("c"), generic("a"), generic("b")} }},
 
+  {"rot-", { {generic("a"), generic("b"), generic("c")},
+             {generic("b"), generic("c"), generic("a")} }},
+  {"↷",    { {generic("a"), generic("b"), generic("c")},
+             {generic("b"), generic("c"), generic("a")} }},
+
   {"dbg", { {}, {} }},
 
   {"+",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tsum(tint, tfloat)} }},
@@ -597,10 +602,13 @@ static const std::unordered_map<std::string, checks::Function> internal_sigs {
   {"%",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tsum(tint, tfloat)} }},
 
   {"box", { {}, {tstack_any}, true, {} }},
-  {"□",   { {}, {tstack_any}, true, {} }},
+  {"▭",   { {}, {tstack_any}, true, {} }},
 
   {"pop", { {generic("a")}, {} }},
   {"◌",   { {generic("a")}, {} }},
+
+  {"ins", { {generic("a"), tstack_any}, {tstack_any} }},
+  {"⤓",   { {generic("a"), tstack_any}, {tstack_any} }},
 
   {"fst!", { {tstack_any}, {generic("a"), tstack_any} }},
   {"⊢!",   { {tstack_any}, {generic("a"), tstack_any} }},

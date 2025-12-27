@@ -83,6 +83,10 @@ ch_stack_node *_mangle_(rot, "rot")(ch_stack_node **full);
 static inline ch_stack_node *_mangle_(rot2, "↻")(ch_stack_node **full) {
     return _mangle_(rot, "rot")(full);
 }
+ch_stack_node *_mangle_(rot_rev, "rot-")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(rot_rev2, "↷")(ch_stack_node **full) {
+    return _mangle_(rot_rev, "rot-")(full);
+}
 
 ch_stack_node *_mangle_(dbg, "dbg")(ch_stack_node **full);
 
@@ -109,7 +113,7 @@ ch_stack_node *_mangle_(divd, "/")(ch_stack_node **full);
 ch_stack_node *_mangle_(mod, "%")(ch_stack_node **full);
 
 ch_stack_node *_mangle_(boxstk, "box")(ch_stack_node **full);
-static inline ch_stack_node *_mangle_(boxstk2, "□")(ch_stack_node **full) {
+static inline ch_stack_node *_mangle_(boxstk2, "▭")(ch_stack_node **full) {
     return _mangle_(boxstk, "box")(full);
 }
 
@@ -134,4 +138,8 @@ static inline ch_stack_node *_mangle_(lst_pop2, "⊣!")(ch_stack_node **full) {
 ch_stack_node *_mangle_(lst, "lst")(ch_stack_node **full);
 static inline ch_stack_node *_mangle_(lst2, "⊣")(ch_stack_node **full) {
     return _mangle_(lst, "lst")(full);
+}
+ch_stack_node *_mangle_(ins, "ins")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(ins2, "⤓")(ch_stack_node **full) {
+    return _mangle_(ins, "ins")(full);
 }
