@@ -48,7 +48,7 @@ std::vector<traverser::Function> builder::Builder::traverse() {
         std::println("== End IR ==\n");
     }
     try {
-        checks::TypeChecker(fns).check();
+        checks::TypeChecker(fns, show_typecheck).check();
     } catch (checks::CheckError e) {
         error(std::format("In function {}: {}", e.fname, e.what));
     }
@@ -68,7 +68,7 @@ void builder::Builder::build(std::filesystem::path root, std::string out_file) {
     std::string out{generate()};
     std::string cmd{std::format(
         "gcc -ggdb -fsanitize=address,leak -x c - -x none {} "
-        "-I{} -o {}",
+        "-I{} -o {} -lm",
         (root / "libcore.a").string(), (root / "core").string(), out_file)};
     if (show_command) {
         std::println("Command: {}", cmd);
@@ -97,5 +97,9 @@ builder::Builder &builder::Builder::gen() {
 }
 builder::Builder &builder::Builder::cmd() {
     show_command = !show_command;
+    return *this;
+}
+builder::Builder &builder::Builder::type() {
+    show_typecheck = !show_typecheck;
     return *this;
 }

@@ -60,7 +60,7 @@ bool parser::Lexer::parse_int_or_float() {
         if (std::from_chars(input.data() + start, input.data() + cursor, val)
                 .ec == std::errc()) {
             output.emplace_back(
-                Token{start, cursor, cursor - start, Token::Int, val});
+                Token{start, cursor, cursor - start, Token::Float, val});
         } else {
             throw ParserError(start, cursor,
                               "Floating point conversion out of range");

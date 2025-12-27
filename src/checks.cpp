@@ -120,8 +120,10 @@ void checks::TypeChecker::collect_sigs() {
         std::string ellipses{func.is_ellipses ? ", ..." : ""};
         std::string retmany{
             func.returns_many ? ", ..." + func.returns_many->show() : ""};
-        std::println("fn {} :: ({}{}) -> ({}{})", decl.name, args, ellipses,
-                     rets, retmany);
+        if (show_typechecks) {
+            std::println("fn {} :: ({}{}) -> ({}{})", decl.name, args, ellipses,
+                         rets, retmany);
+        }
     }
 }
 
@@ -249,8 +251,8 @@ void checks::TypeChecker::try_apply(std::vector<Type> &stack, Function sig,
     }
 
     if (sig.is_ellipses) {
-      stack.clear();
-    }        
+        stack.clear();
+    }
 
     stack.insert(stack.end(), sig.rets.begin(), sig.rets.end());
 
@@ -306,8 +308,8 @@ checks::Type union_collapse(std::vector<checks::Type> const &types) {
     return tsum(uniq);
 }
 
-bool unify(std::vector<checks::Type> &prev,
-           std::vector<checks::Type> &current) {
+bool checks::TypeChecker::unify(std::vector<checks::Type> &prev,
+                                std::vector<checks::Type> &current) {
     auto p = prev.rbegin();
     auto c = current.rbegin();
 
@@ -349,8 +351,10 @@ bool unify(std::vector<checks::Type> &prev,
     // std::println("- - - -");
 
     if (result == prev) {
-        std::println("Converged:");
-        print_stk(prev);
+        if (show_typechecks) {
+            std::println("Converged:");
+            print_stk(prev);
+        }
         return false;
     }
 
@@ -369,16 +373,20 @@ void checks::TypeChecker::verify(traverser::Function fn) {
     std::vector<State> states{State{0, initial}};
     std::unordered_map<std::size_t, std::vector<Type>> been_to{};
 
-    std::println("STATES - {}", fn.name);
+    if (show_typechecks) {
+        std::println("STATES - {}", fn.name);
+    }
     while (!states.empty()) {
         State &current = states.back();
         auto instr = fn.body[current.ip];
         auto &stack = current.stack;
 
-        std::println("State count: {}", states.size());
-        std::println("On {}", instr.show());
-        print_stk(stack);
-        std::println("");
+        if (show_typechecks) {
+            std::println("State count: {}", states.size());
+            std::println("On {}", instr.show());
+            print_stk(stack);
+            std::println("");
+        }
 
         if (been_to.contains(current.ip)) {
             auto &prev = been_to[current.ip];
@@ -563,15 +571,30 @@ static const std::unordered_map<std::string, checks::Function> internal_sigs {
   {"dup", { {generic("a")}, {generic("a"), generic("a")} }},
 
   {"=",   { {generic("a"), generic("b")}, {tbool} }},
+  {"!=",  { {generic("a"), generic("b")}, {tbool} }},
+  {"≠",   { {generic("a"), generic("b")}, {tbool} }},
+  {"<",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tbool} }},
+  {">",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tbool} }},
+  {">=",  { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tbool} }},
+  {"<=",  { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tbool} }},
+  {"≤",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tbool} }},
+  {"≥",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tbool} }},
 
   {"↕",   { {generic("a"), generic("b")}, {generic("b"), generic("a")} }},
   {"swp", { {generic("a"), generic("b")}, {generic("b"), generic("a")} }},
 
+  {"rot", { {generic("a"), generic("b"), generic("c")},
+            {generic("c"), generic("a"), generic("b")} }},
+  {"↻",   { {generic("a"), generic("b"), generic("c")},
+            {generic("c"), generic("a"), generic("b")} }},
+
   {"dbg", { {}, {} }},
 
   {"+",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tsum(tint, tfloat)} }},
-
   {"-",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tsum(tint, tfloat)} }},
+  {"*",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tsum(tint, tfloat)} }},
+  {"/",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tsum(tint, tfloat)} }},
+  {"%",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tsum(tint, tfloat)} }},
 
   {"box", { {}, {tstack_any}, true, {} }},
   {"□",   { {}, {tstack_any}, true, {} }},
@@ -581,13 +604,21 @@ static const std::unordered_map<std::string, checks::Function> internal_sigs {
 
   {"fst!", { {tstack_any}, {generic("a"), tstack_any} }},
   {"⊢!",   { {tstack_any}, {generic("a"), tstack_any} }},
+  {"lst!", { {tstack_any}, {generic("a"), tstack_any} }},
+  {"⊣!",   { {tstack_any}, {generic("a"), tstack_any} }},
+  {"fst",  { {tstack_any}, {generic("a"), tstack_any} }},
+  {"⊢",    { {tstack_any}, {generic("a"), tstack_any} }},
+  {"lst",  { {tstack_any}, {generic("a"), tstack_any} }},
+  {"⊣",    { {tstack_any}, {generic("a"), tstack_any} }},
 
   {"print", { {generic("a")}, {} } }
 };
 // clang-format on
 
-checks::TypeChecker::TypeChecker(std::vector<traverser::Function> fns)
-    : fns(std::move(fns)), sigs(internal_sigs) {}
+checks::TypeChecker::TypeChecker(std::vector<traverser::Function> fns,
+                                 bool show_typechecks)
+    : fns(std::move(fns)), sigs(internal_sigs),
+      show_typechecks(show_typechecks) {}
 
 bool checks::Type::operator==(Type const &other) const {
     if (kind != other.kind)

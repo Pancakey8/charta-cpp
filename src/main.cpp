@@ -29,6 +29,8 @@ int main(int argc, char *argv[]) {
             b.gen();
         } else if (arg == "-cmd") {
             b.cmd();
+        } else if (arg == "-type") {
+            b.type();
         }
     }
     b.build(exe_dir, "out_" + std::filesystem::path(argv[1]).stem().string());

@@ -70,6 +70,7 @@ void ch_stk_append(ch_stack_node **to, ch_stack_node *from);
 void ch_stk_delete(ch_stack_node **stk);
 
 ch_stack_node *_mangle_(print, "print")(ch_stack_node **full);
+
 ch_stack_node *_mangle_(dup, "dup")(ch_stack_node **full);
 static inline ch_stack_node *_mangle_(dup2, "⇈")(ch_stack_node **full) {
     return _mangle_(dup, "dup")(full);
@@ -78,19 +79,59 @@ ch_stack_node *_mangle_(swp, "swp")(ch_stack_node **full);
 static inline ch_stack_node *_mangle_(swp2, "↕")(ch_stack_node **full) {
     return _mangle_(swp, "swp")(full);
 }
+ch_stack_node *_mangle_(rot, "rot")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(rot2, "↻")(ch_stack_node **full) {
+    return _mangle_(rot, "rot")(full);
+}
+
 ch_stack_node *_mangle_(dbg, "dbg")(ch_stack_node **full);
+
 ch_stack_node *_mangle_(equ_cmp, "=")(ch_stack_node **full);
+ch_stack_node *_mangle_(nequ, "!=")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(nequ2, "≠")(ch_stack_node **full) {
+    return _mangle_(nequ, "!=")(full);
+}
+ch_stack_node *_mangle_(less, "<")(ch_stack_node **full);
+ch_stack_node *_mangle_(grt, ">")(ch_stack_node **full);
+ch_stack_node *_mangle_(less_equ, "<=")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(less_equ2, "≤")(ch_stack_node **full) {
+    return _mangle_(less_equ, "<=")(full);
+}
+ch_stack_node *_mangle_(grt_equ, ">=")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(grt_equ2, "≥")(ch_stack_node **full) {
+    return _mangle_(grt_equ, ">=")(full);
+}
+
 ch_stack_node *_mangle_(add, "+")(ch_stack_node **full);
 ch_stack_node *_mangle_(sub, "-")(ch_stack_node **full);
+ch_stack_node *_mangle_(mult, "*")(ch_stack_node **full);
+ch_stack_node *_mangle_(divd, "/")(ch_stack_node **full);
+ch_stack_node *_mangle_(mod, "%")(ch_stack_node **full);
+
 ch_stack_node *_mangle_(boxstk, "box")(ch_stack_node **full);
 static inline ch_stack_node *_mangle_(boxstk2, "□")(ch_stack_node **full) {
     return _mangle_(boxstk, "box")(full);
 }
+
 ch_stack_node *_mangle_(pop, "pop")(ch_stack_node **full);
 static inline ch_stack_node *_mangle_(pop2, "◌")(ch_stack_node **full) {
     return _mangle_(pop, "pop")(full);
 }
+
 ch_stack_node *_mangle_(fst_pop, "fst!")(ch_stack_node **full);
 static inline ch_stack_node *_mangle_(fst_pop2, "⊢!")(ch_stack_node **full) {
     return _mangle_(fst_pop, "fst!")(full);
+}
+ch_stack_node *_mangle_(fst, "fst")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(fst2, "⊢")(ch_stack_node **full) {
+    return _mangle_(fst, "fst")(full);
+}
+
+ch_stack_node *_mangle_(lst_pop, "lst!")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(lst_pop2, "⊣!")(ch_stack_node **full) {
+    return _mangle_(lst_pop, "lst!")(full);
+}
+ch_stack_node *_mangle_(lst, "lst")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(lst2, "⊣")(ch_stack_node **full) {
+    return _mangle_(lst, "lst")(full);
 }

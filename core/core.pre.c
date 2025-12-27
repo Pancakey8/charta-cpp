@@ -3,6 +3,7 @@
 #else
 #include "core.pre.h"
 #endif
+#include <math.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -199,7 +200,7 @@ void print_value(ch_value v) {
         printf("%f", v.value.f);
         break;
     case CH_VALK_BOOL:
-        printf("%b", v.value.b);
+        printf("%s", v.value.b ? "⊤" : "⊥");
         break;
     case CH_VALK_CHAR:
         printf("'\\U%x'", v.value.i);
@@ -373,5 +374,238 @@ ch_stack_node *_mangle_(fst_pop, "fst!")(ch_stack_node **full) {
     }
     ch_value val = ch_stk_pop(&local->val.value.stk);
     ch_stk_push(&local, val);
+    return local;
+}
+
+ch_stack_node *_mangle_(fst, "fst")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 1, 0);
+    if (local->val.kind != CH_VALK_STACK) {
+        printf("ERR: '⊢' expected stack, got '%s'\n",
+               ch_valk_name(local->val.kind));
+        exit(1);
+    }
+    if (local->val.value.stk == NULL) {
+        printf("ERR: '⊢' got empty stack");
+        exit(1);
+    }
+    ch_value top = ch_valcpy(&local->val.value.stk->val);
+    ch_stk_push(&local, top);
+    return local;
+}
+
+ch_stack_node *_mangle_(lst_pop, "lst!")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 1, 0);
+    if (local->val.kind != CH_VALK_STACK) {
+        printf("ERR: '⊣!' expected stack, got '%s'\n",
+               ch_valk_name(local->val.kind));
+        exit(1);
+    }
+    if (local->val.value.stk == NULL) {
+        printf("ERR: '⊣!' got empty stack");
+        exit(1);
+    }
+    ch_stack_node *stk = local->val.value.stk;
+    ch_stack_node *prev = NULL;
+    while (stk->next != NULL) {
+        prev = stk;
+        stk = stk->next;
+    }
+    if (prev) {
+        prev->next = NULL;
+    }
+    ch_value val = ch_stk_pop(&stk);
+    ch_stk_push(&local, val);
+    return local;
+}
+
+ch_stack_node *_mangle_(lst, "lst")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 1, 0);
+    if (local->val.kind != CH_VALK_STACK) {
+        printf("ERR: '⊣' expected stack, got '%s'\n",
+               ch_valk_name(local->val.kind));
+        exit(1);
+    }
+    if (local->val.value.stk == NULL) {
+        printf("ERR: '⊣' got empty stack");
+        exit(1);
+    }
+    ch_stack_node *stk = local->val.value.stk;
+    while (stk->next != NULL) {
+        stk = stk->next;
+    }
+    ch_value val = ch_valcpy(&stk->val);
+    ch_stk_push(&local, val);
+    return local;
+}
+
+ch_stack_node *_mangle_(rot, "rot")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 3, 0);
+    ch_stack_node *bot = local->next->next;
+    local->next->next = NULL;
+    bot->next = local;
+    return bot;
+}
+
+ch_stack_node *_mangle_(nequ, "!=")(ch_stack_node **full) {
+    ch_stack_node *local = _mangle_(equ_cmp, "=")(full);
+    local->val.value.b = !local->val.value.b;
+    return local;
+}
+ch_stack_node *_mangle_(less, "<")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 2, 0);
+    ch_value b = ch_stk_pop(&local);
+    ch_value a = ch_stk_pop(&local);
+    float b_val;
+    if (b.kind == CH_VALK_INT) {
+        b_val = b.value.i;
+    } else if (b.kind == CH_VALK_FLOAT) {
+        b_val = b.value.f;
+    } else {
+        printf("ERR: '<' expected number, got '%s'\n", ch_valk_name(b.kind));
+        exit(1);
+    }
+    float a_val;
+    if (a.kind == CH_VALK_INT) {
+        a_val = a.value.i;
+    } else if (a.kind == CH_VALK_FLOAT) {
+        a_val = a.value.f;
+    } else {
+        printf("ERR: '<' expected number, got '%s'\n", ch_valk_name(a.kind));
+        exit(1);
+    }
+    ch_stk_push(&local, ch_valof_bool(a_val < b_val));
+    return local;
+}
+ch_stack_node *_mangle_(grt, ">")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 2, 0);
+    ch_value b = ch_stk_pop(&local);
+    ch_value a = ch_stk_pop(&local);
+    float b_val;
+    if (b.kind == CH_VALK_INT) {
+        b_val = b.value.i;
+    } else if (b.kind == CH_VALK_FLOAT) {
+        b_val = b.value.f;
+    } else {
+        printf("ERR: '>' expected number, got '%s'\n", ch_valk_name(b.kind));
+        exit(1);
+    }
+    float a_val;
+    if (a.kind == CH_VALK_INT) {
+        a_val = a.value.i;
+    } else if (a.kind == CH_VALK_FLOAT) {
+        a_val = a.value.f;
+    } else {
+        printf("ERR: '>' expected number, got '%s'\n", ch_valk_name(a.kind));
+        exit(1);
+    }
+    ch_stk_push(&local, ch_valof_bool(a_val > b_val));
+    return local;
+}
+ch_stack_node *_mangle_(less_equ, "<=")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 2, 0);
+    ch_value b = ch_stk_pop(&local);
+    ch_value a = ch_stk_pop(&local);
+    float b_val;
+    if (b.kind == CH_VALK_INT) {
+        b_val = b.value.i;
+    } else if (b.kind == CH_VALK_FLOAT) {
+        b_val = b.value.f;
+    } else {
+        printf("ERR: '<=' expected number, got '%s'\n", ch_valk_name(b.kind));
+        exit(1);
+    }
+    float a_val;
+    if (a.kind == CH_VALK_INT) {
+        a_val = a.value.i;
+    } else if (a.kind == CH_VALK_FLOAT) {
+        a_val = a.value.f;
+    } else {
+        printf("ERR: '<=' expected number, got '%s'\n", ch_valk_name(a.kind));
+        exit(1);
+    }
+    ch_stk_push(&local, ch_valof_bool(a_val <= b_val));
+    return local;
+}
+ch_stack_node *_mangle_(grt_equ, ">=")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 2, 0);
+    ch_value b = ch_stk_pop(&local);
+    ch_value a = ch_stk_pop(&local);
+    float b_val;
+    if (b.kind == CH_VALK_INT) {
+        b_val = b.value.i;
+    } else if (b.kind == CH_VALK_FLOAT) {
+        b_val = b.value.f;
+    } else {
+        printf("ERR: '>=' expected number, got '%s'\n", ch_valk_name(b.kind));
+        exit(1);
+    }
+    float a_val;
+    if (a.kind == CH_VALK_INT) {
+        a_val = a.value.i;
+    } else if (a.kind == CH_VALK_FLOAT) {
+        a_val = a.value.f;
+    } else {
+        printf("ERR: '>=' expected number, got '%s'\n", ch_valk_name(a.kind));
+        exit(1);
+    }
+    ch_stk_push(&local, ch_valof_bool(a_val >= b_val));
+    return local;
+}
+
+ch_stack_node *_mangle_(mult, "*")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 2, 0);
+    ch_value b = ch_stk_pop(&local);
+    ch_value a = ch_stk_pop(&local);
+    if (a.kind == CH_VALK_INT && b.kind == CH_VALK_INT) {
+        ch_stk_push(&local, ch_valof_int(a.value.i * b.value.i));
+    } else if (a.kind == CH_VALK_FLOAT && b.kind == CH_VALK_INT) {
+        ch_stk_push(&local, ch_valof_float(a.value.f * b.value.i));
+    } else if (a.kind == CH_VALK_INT && b.kind == CH_VALK_FLOAT) {
+        ch_stk_push(&local, ch_valof_float(a.value.i * b.value.f));
+    } else if (a.kind == CH_VALK_FLOAT && b.kind == CH_VALK_FLOAT) {
+        ch_stk_push(&local, ch_valof_float(a.value.f * b.value.f));
+    } else {
+        printf("ERR: '*' expected two numbers, got '%s' and '%s'\n",
+               ch_valk_name(a.kind), ch_valk_name(b.kind));
+        exit(1);
+    }
+    return local;
+}
+ch_stack_node *_mangle_(divd, "/")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 2, 0);
+    ch_value b = ch_stk_pop(&local);
+    ch_value a = ch_stk_pop(&local);
+    if (a.kind == CH_VALK_INT && b.kind == CH_VALK_INT) {
+        ch_stk_push(&local, ch_valof_int(a.value.i / b.value.i));
+    } else if (a.kind == CH_VALK_FLOAT && b.kind == CH_VALK_INT) {
+        ch_stk_push(&local, ch_valof_float(a.value.f / b.value.i));
+    } else if (a.kind == CH_VALK_INT && b.kind == CH_VALK_FLOAT) {
+        ch_stk_push(&local, ch_valof_float(a.value.i / b.value.f));
+    } else if (a.kind == CH_VALK_FLOAT && b.kind == CH_VALK_FLOAT) {
+        ch_stk_push(&local, ch_valof_float(a.value.f / b.value.f));
+    } else {
+        printf("ERR: '/' expected two numbers, got '%s' and '%s'\n",
+               ch_valk_name(a.kind), ch_valk_name(b.kind));
+        exit(1);
+    }
+    return local;
+}
+ch_stack_node *_mangle_(mod, "%")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 2, 0);
+    ch_value b = ch_stk_pop(&local);
+    ch_value a = ch_stk_pop(&local);
+    if (a.kind == CH_VALK_INT && b.kind == CH_VALK_INT) {
+        ch_stk_push(&local, ch_valof_int(a.value.i % b.value.i));
+    } else if (a.kind == CH_VALK_FLOAT && b.kind == CH_VALK_INT) {
+        ch_stk_push(&local, ch_valof_float(fmodf(a.value.f, b.value.i)));
+    } else if (a.kind == CH_VALK_INT && b.kind == CH_VALK_FLOAT) {
+        ch_stk_push(&local, ch_valof_float(fmodf(a.value.f, b.value.i)));
+    } else if (a.kind == CH_VALK_FLOAT && b.kind == CH_VALK_FLOAT) {
+        ch_stk_push(&local, ch_valof_float(fmodf(a.value.f, b.value.i)));
+    } else {
+        printf("ERR: '%%' expected two numbers, got '%s' and '%s'\n",
+               ch_valk_name(a.kind), ch_valk_name(b.kind));
+        exit(1);
+    }
     return local;
 }

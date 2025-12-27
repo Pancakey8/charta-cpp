@@ -11,6 +11,7 @@ class Builder {
     bool show_ir{false};
     bool show_gen{false};
     bool show_command{false};
+    bool show_typecheck{false};
 
     void error(std::size_t start, std::size_t end, std::string what);
     void error(std::string what);
@@ -29,5 +30,6 @@ class Builder {
     Builder &ir();
     Builder &gen();
     Builder &cmd();
+    Builder &type();
 };
 } // namespace builder

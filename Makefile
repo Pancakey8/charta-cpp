@@ -14,13 +14,13 @@ CORE_OBJ := $(CORE_SRC:.c=.o)
 all: core charta mangler
 
 charta: $(OBJ)
-	$(CXX) $(LDFLAGS) -o charta $^
+	$(CXX) -o charta $^ $(LDFLAGS)
 
 core: $(CORE_OBJ) $(CORE_H)
 	ar rcs libcore.a $^
 
 mangler: src/mangler.cpp src/utf.cpp
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o mangler $^
+	$(CXX) $(CXXFLAGS) -o mangler $^ $(LDFLAGS)
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
@@ -29,10 +29,10 @@ core/%.o: core/%.c core/%.h
 	$(CC) $(CCFLAGS) -DPRE=1 -c -o $@ $<
 
 core/%.c: core/%.pre.c mangler
-	./process.sh $< $@
+	python ./process.py $< $@
 
 core/%.h: core/%.pre.h mangler
-	./process.sh $< $@
+	python ./process.py $< $@
 
 .PRECIOUS: core/%.c core/%.h
 

@@ -65,14 +65,17 @@ struct Function {
 class TypeChecker {
     std::vector<traverser::Function> fns;
     std::unordered_map<std::string, Function> sigs;
+    bool show_typechecks;
 
     void collect_sigs();
     void try_apply(std::vector<Type> &stack, Function sig, std::string caller,
                    std::string callee);
+    bool unify(std::vector<Type> &prev, std::vector<Type> &current);
     void verify(traverser::Function fn);
 
   public:
-    TypeChecker(std::vector<traverser::Function> fns);
+    TypeChecker(std::vector<traverser::Function> fns,
+                bool show_typechecks = false);
 
     void check();
 };
