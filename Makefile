@@ -29,10 +29,10 @@ core/%.o: core/%.c core/%.h
 	$(CC) $(CCFLAGS) -DPRE=1 -c -o $@ $<
 
 core/%.c: core/%.pre.c mangler
-	python ./process.py $< $@
+	python ./process.py ${PWD}/mangler $< $@
 
 core/%.h: core/%.pre.h mangler
-	python ./process.py $< $@
+	python ./process.py ${PWD}/mangler $< $@
 
 .PRECIOUS: core/%.c core/%.h
 

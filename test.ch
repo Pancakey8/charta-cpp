@@ -1,4 +1,4 @@
-fn odd (n) -> (bool) {
+fn odd (n : int) -> (bool) {
 → ⇈ 0 = ? 1 - even 
         ↓
        '⊥
