@@ -5,12 +5,14 @@ import sys
 from pathlib import Path
 
 def main():
-    if len(sys.argv) != 3:
-        print(f"usage: {sys.argv[0]} <input> <output>", file=sys.stderr)
+    if len(sys.argv) != 4:
+        print(f"usage: {sys.argv[0]} <mangler> <input> <output>", file=sys.stderr)
         sys.exit(1)
 
-    in_path = Path(sys.argv[1])
-    out_path = Path(sys.argv[2])
+    print(sys.argv)
+    mangler_path = Path(sys.argv[1])
+    in_path = Path(sys.argv[2])
+    out_path = Path(sys.argv[3])
 
     text = in_path.read_text()
 
@@ -24,7 +26,7 @@ def main():
 
         if ascii_arg not in cache:
             result = subprocess.run(
-                ["./mangler", ascii_arg],
+                [mangler_path, ascii_arg],
                 check=True,
                 stdout=subprocess.PIPE,
                 text=True,
