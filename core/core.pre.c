@@ -683,3 +683,62 @@ ch_stack_node *_mangle_(rot_rev, "rot-")(ch_stack_node **full) {
     local->next = rest;
     return b;
 }
+
+ch_stack_node *_mangle_(ord, "ord")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 1, 0);
+    if (local->val.kind != CH_VALK_CHAR) {
+        printf("ERR: 'ord' expected char, got '%s'",
+               ch_valk_name(local->val.kind));
+        exit(1);
+    }
+    local->val.kind = CH_VALK_INT;
+    return local;
+}
+
+ch_stack_node *_mangle_(chr, "chr")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 1, 0);
+    if (local->val.kind != CH_VALK_INT) {
+        printf("ERR: 'ord' expected int, got '%s'",
+               ch_valk_name(local->val.kind));
+        exit(1);
+    }
+    local->val.kind = CH_VALK_CHAR;
+    return local;
+}
+
+ch_stack_node *_mangle_(and, "&&")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 2, 0);
+    ch_value b = ch_stk_pop(&local);
+    ch_value a = ch_stk_pop(&local);
+    if (b.kind != CH_VALK_BOOL || a.kind != CH_VALK_BOOL) {
+        printf("ERR: '&&' expected two bools, got '%s' and '%s'",
+               ch_valk_name(b.kind), ch_valk_name(a.kind));
+        exit(1);
+    }
+    ch_stk_push(&local, ch_valof_bool(b.value.b && a.value.b));
+    return local;
+}
+
+ch_stack_node *_mangle_(or, "||")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 2, 0);
+    ch_value b = ch_stk_pop(&local);
+    ch_value a = ch_stk_pop(&local);
+    if (b.kind != CH_VALK_BOOL || a.kind != CH_VALK_BOOL) {
+        printf("ERR: '||' expected two bools, got '%s' and '%s'",
+               ch_valk_name(b.kind), ch_valk_name(a.kind));
+        exit(1);
+    }
+    ch_stk_push(&local, ch_valof_bool(b.value.b || a.value.b));
+    return local;
+}
+
+ch_stack_node *_mangle_(not, "!")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 1, 0);
+    if (local->val.kind != CH_VALK_BOOL) {
+        printf("ERR: '!' expected bool, got '%s'",
+               ch_valk_name(local->val.kind));
+        exit(1);
+    }
+    local->val.value.b = !local->val.value.b;
+    return local;
+}

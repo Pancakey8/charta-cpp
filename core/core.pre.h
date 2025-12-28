@@ -147,3 +147,25 @@ ch_stack_node *_mangle_(ins, "ins")(ch_stack_node **full);
 static inline ch_stack_node *_mangle_(ins2, "⤓")(ch_stack_node **full) {
     return _mangle_(ins, "ins")(full);
 }
+
+ch_stack_node *_mangle_(ord, "ord")(ch_stack_node **full);
+ch_stack_node *_mangle_(chr, "chr")(ch_stack_node **full);
+
+ch_stack_node *_mangle_(and, "&&")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(and2, "∧")(ch_stack_node **full) {
+    return _mangle_(and, "&&")(full);
+}
+ch_stack_node *_mangle_(or, "||")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(or2, "∨")(ch_stack_node **full) {
+    return _mangle_(or, "||")(full);
+}
+ch_stack_node *_mangle_(not, "!")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(not2, "¬")(ch_stack_node **full) {
+    return _mangle_(not, "!")(full);
+}
+
+// is-int, is-flt, is-chr, is-bool, is-str, is-stk
+// depth (of current stack), length (of any stack)
+// concat, take, drop on stacks
+// panic
+// stringify, strlen, strget, strset, strappend, strpush

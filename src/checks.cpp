@@ -623,6 +623,16 @@ static const std::unordered_map<std::string, checks::Function> internal_sigs {
   {"lst",  { {tstack_any}, {generic("a"), tstack_any} }},
   {"⊣",    { {tstack_any}, {generic("a"), tstack_any} }},
 
+  { "ord", { {tchar}, {tint}  }},
+  { "chr", { {tint},  {tchar} }},
+
+  { "&&", { {tbool, tbool}, {tbool} }},
+  { "∧",  { {tbool, tbool}, {tbool} }},
+  { "||", { {tbool, tbool}, {tbool} }},
+  { "∨",  { {tbool, tbool}, {tbool} }},
+  { "!",  { {tbool},        {tbool} }},
+  { "¬",  { {tbool},        {tbool} }},
+
   {"print", { {generic("a")}, {} } }
 };
 // clang-format on

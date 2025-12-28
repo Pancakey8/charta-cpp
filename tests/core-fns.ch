@@ -56,9 +56,27 @@ fn test-stk-ops () -> (int) {
                            0
 }
 
+fn test-char-ops () -> (int) {
+→ 'θ' ord ⇈ 952 ≠ ? chr 'θ' ≠ ? 0
+                  ↓           ↓
+                  1           2
+}
+
+fn test-bool-ops () -> (int) {
+→ '⊤ '⊥ ∨ ? 1
+          ↓
+          '⊤
+          '⊤      3
+          ∧       ↑
+          ?→ '⊤ ¬ ? 0
+          2       
+}
+
 fn main () -> () {
 →   "< > ≤ ≥" test-comparisons test ↓
 ↓            test test-equals "= ≠" ←
 →   "⇈ ↕ ↻ ↷ ◌" test-align-ops test ↓
-  test test-stk-ops "⊢ ⊢! ⊣ ⊣! ⤓ ▭" ←
+↓ test test-stk-ops "⊢ ⊢! ⊣ ⊣! ⤓ ▭" ←
+→      "ord chr" test-char-ops test ↓
+         test test-bool-ops "∧ ∨ ¬" ←
 }
