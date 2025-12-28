@@ -20,6 +20,10 @@ typedef struct {
 
 ch_string ch_str_new(char const *data);
 
+ch_string ch_str_alloc(size_t len);
+
+void ch_str_append(ch_string *str, char c);
+
 void ch_str_delete(ch_string *str);
 
 struct ch_stack_node;

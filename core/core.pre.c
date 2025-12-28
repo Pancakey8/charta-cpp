@@ -19,9 +19,56 @@ ch_string ch_str_new(char const *data) {
     return str;
 }
 
+ch_string ch_str_alloc(size_t len) {
+    ch_string str;
+    str.size = len + 1;
+    str.len = 0;
+    str.data = malloc(len + 1);
+    str.data[0] = 0;
+    return str;
+}
+
+void ch_str_append(ch_string *str, char c) {
+    if (str->len + 1 >= str->size) {
+        str->size = 3 * str->size / 2 + 1;
+        str->data = realloc(str->data, str->size);
+    }
+    str->data[str->len] = c;
+    str->data[str->len + 1] = 0;
+    ++str->len;
+}
+
 void ch_str_delete(ch_string *str) {
     free(str->data);
     str->data = NULL;
+    str->len = 0;
+    str->size = 0;
+}
+
+ch_string encode_utf8(int c) {
+    if (c <= 0x7F) {
+        ch_string out = ch_str_alloc(1);
+        ch_str_append(&out, c);
+        return out;
+    } else if (c <= 0x7FF) {
+        ch_string out = ch_str_alloc(1);
+        ch_str_append(&out, (char)(0xC0 | (c >> 6)));
+        ch_str_append(&out, (char)(0x80 | (c & 0x3F)));
+        return out;
+    } else if (c <= 0xFFFF) {
+        ch_string out = ch_str_alloc(1);
+        ch_str_append(&out, (char)(0xE0 | (c >> 12)));
+        ch_str_append(&out, (char)(0x80 | ((c >> 6) & 0x3F)));
+        ch_str_append(&out, (char)(0x80 | (c & 0x3F)));
+        return out;
+    } else {
+        ch_string out = ch_str_alloc(1);
+        ch_str_append(&out, (char)(0xF0 | (c >> 18)));
+        ch_str_append(&out, (char)(0x80 | ((c >> 12) & 0x3F)));
+        ch_str_append(&out, (char)(0x80 | ((c >> 6) & 0x3F)));
+        ch_str_append(&out, (char)(0x80 | (c & 0x3F)));
+        return out;
+    }
 }
 
 ch_value ch_valof_int(int n) {
@@ -202,9 +249,12 @@ void print_value(ch_value v) {
     case CH_VALK_BOOL:
         printf("%s", v.value.b ? "⊤" : "⊥");
         break;
-    case CH_VALK_CHAR:
-        printf("'\\U%x'", v.value.i);
+    case CH_VALK_CHAR: {
+        ch_string s = encode_utf8(v.value.i);
+        printf("'%s'", s.data);
+        ch_str_delete(&s);
         break;
+    }
     case CH_VALK_STRING:
         printf("%s", v.value.s.data);
         break;
@@ -272,26 +322,26 @@ char val_equals(ch_value const *v1, ch_value const *v2) {
 
     switch (v1->kind) {
     case CH_VALK_INT:
-      return v1->value.i == v2->value.i;
+        return v1->value.i == v2->value.i;
     case CH_VALK_FLOAT:
-      return v1->value.f == v2->value.f;
+        return v1->value.f == v2->value.f;
     case CH_VALK_BOOL:
-      return v1->value.b == v2->value.b;
+        return v1->value.b == v2->value.b;
     case CH_VALK_CHAR:
-      return v1->value.i == v2->value.i;
+        return v1->value.i == v2->value.i;
     case CH_VALK_STRING:
-      return strcmp(v1->value.s.data, v2->value.s.data) == 0;
+        return strcmp(v1->value.s.data, v2->value.s.data) == 0;
     case CH_VALK_STACK: {
-      ch_stack_node *s1 = v1->value.stk;
-      ch_stack_node *s2 = v2->value.stk;
-      while (s1 != NULL && s2 != NULL) {
-          if (!val_equals(&s1->val, &s2->val))
-              return 0;
-          s1 = s1->next;
-          s2 = s2->next;
-      }
-      return s1 == NULL && s2 == NULL;
-    }        
+        ch_stack_node *s1 = v1->value.stk;
+        ch_stack_node *s2 = v2->value.stk;
+        while (s1 != NULL && s2 != NULL) {
+            if (!val_equals(&s1->val, &s2->val))
+                return 0;
+            s1 = s1->next;
+            s2 = s2->next;
+        }
+        return s1 == NULL && s2 == NULL;
+    }
     }
 }
 
