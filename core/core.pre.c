@@ -742,3 +742,39 @@ ch_stack_node *_mangle_(not, "!")(ch_stack_node **full) {
     local->val.value.b = !local->val.value.b;
     return local;
 }
+
+ch_stack_node *_mangle_(type_int, "int")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 0, 0);
+    ch_stk_push(&local, ch_valof_int(CH_VALK_INT));
+    return local;
+}
+ch_stack_node *_mangle_(type_flt, "float")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 0, 0);
+    ch_stk_push(&local, ch_valof_int(CH_VALK_FLOAT));
+    return local;
+}
+ch_stack_node *_mangle_(type_chr, "char")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 0, 0);
+    ch_stk_push(&local, ch_valof_int(CH_VALK_CHAR));
+    return local;
+}
+ch_stack_node *_mangle_(type_bool, "bool")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 0, 0);
+    ch_stk_push(&local, ch_valof_int(CH_VALK_BOOL));
+    return local;
+}
+ch_stack_node *_mangle_(type_str, "string")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 0, 0);
+    ch_stk_push(&local, ch_valof_int(CH_VALK_STRING));
+    return local;
+}
+ch_stack_node *_mangle_(type_stk, "stack")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 0, 0);
+    ch_stk_push(&local, ch_valof_int(CH_VALK_STACK));
+    return local;
+}
+ch_stack_node *_mangle_(type_of, "type")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 1, 0);
+    ch_stk_push(&local, ch_valof_int(local->val.kind));
+    return local;
+}

@@ -164,7 +164,17 @@ static inline ch_stack_node *_mangle_(not2, "¬")(ch_stack_node **full) {
     return _mangle_(not, "!")(full);
 }
 
-// is-int, is-flt, is-chr, is-bool, is-str, is-stk
+ch_stack_node *_mangle_(type_int, "int")(ch_stack_node **full);
+ch_stack_node *_mangle_(type_flt, "float")(ch_stack_node **full);
+ch_stack_node *_mangle_(type_chr, "char")(ch_stack_node **full);
+ch_stack_node *_mangle_(type_bool, "bool")(ch_stack_node **full);
+ch_stack_node *_mangle_(type_str, "string")(ch_stack_node **full);
+ch_stack_node *_mangle_(type_stk, "stack")(ch_stack_node **full);
+ch_stack_node *_mangle_(type_of, "type")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(type_of2, "∈")(ch_stack_node **full) {
+    return _mangle_(type_of, "type")(full);
+}
+
 // depth (of current stack), length (of any stack)
 // concat, take, drop on stacks
 // panic

@@ -72,11 +72,25 @@ fn test-bool-ops () -> (int) {
           2       
 }
 
+fn test-type-info () -> (int) {
+↓                                                            4
+                         0 ? ≠ bool ∈ '⊤ ◌ ? ≠ char ∈ 'a' ◌ ←?
+                           ↓               ↓                 =
+                           6               5                 int
+                                                             ∈
+                                                             3
+                                                             ◌
+→ "hello" ∈ string ≠ ? ∈ float = ? ◌ example-stk ∈ stack ≠ ? ↑
+                     ↓           ↓                         ↓
+                     1           2                         3
+}
+
 fn main () -> () {
 →   "< > ≤ ≥" test-comparisons test ↓
 ↓            test test-equals "= ≠" ←
 →   "⇈ ↕ ↻ ↷ ◌" test-align-ops test ↓
 ↓ test test-stk-ops "⊢ ⊢! ⊣ ⊣! ⤓ ▭" ←
 →      "ord chr" test-char-ops test ↓
-         test test-bool-ops "∧ ∨ ¬" ←
+↓        test test-bool-ops "∧ ∨ ¬" ←
+→        "type" test-type-info test
 }

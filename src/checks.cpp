@@ -633,6 +633,15 @@ static const std::unordered_map<std::string, checks::Function> internal_sigs {
   { "!",  { {tbool},        {tbool} }},
   { "¬",  { {tbool},        {tbool} }},
 
+  { "int",    { {}, {tint} }},
+  { "float",  { {}, {tint} }},
+  { "char",   { {}, {tint} }},
+  { "bool",   { {}, {tint} }},
+  { "string", { {}, {tint} }},
+  { "stack",  { {}, {tint} }},
+  { "type",   { {generic("a")}, {tint, generic("a")} }},
+  { "∈",      { {generic("a")}, {tint, generic("a")} }},
+
   {"print", { {generic("a")}, {} } }
 };
 // clang-format on
