@@ -50,6 +50,8 @@ ch_value ch_valof_string(ch_string n);
 
 ch_value ch_valof_bool(char n);
 
+ch_value ch_valof_stack(struct ch_stack_node *n);
+
 char ch_valas_bool(ch_value v);
 
 void ch_val_delete(ch_value *val);
@@ -175,7 +177,27 @@ static inline ch_stack_node *_mangle_(type_of2, "∈")(ch_stack_node **full) {
     return _mangle_(type_of, "type")(full);
 }
 
-// depth (of current stack), length (of any stack)
-// concat, take, drop on stacks
+ch_stack_node *_mangle_(dpt, "dpt")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(dpt2, "≡")(ch_stack_node **full) {
+    return _mangle_(dpt, "dpt")(full);
+}
+ch_stack_node *_mangle_(len, "len")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(len2, "⧺")(ch_stack_node **full) {
+    return _mangle_(len, "len")(full);
+}
+
+ch_stack_node *_mangle_(concat, "++")(ch_stack_node **full);
+ch_stack_node *_mangle_(take, "take")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(take2, "↙")(ch_stack_node **full) {
+    return _mangle_(take, "take")(full);
+}
+ch_stack_node *_mangle_(drop, "drop")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(drop2, "↘")(ch_stack_node **full) {
+    return _mangle_(drop, "drop")(full);
+}
+ch_stack_node *_mangle_(rev, "rev")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(rev2, "⇆")(ch_stack_node **full) {
+    return _mangle_(rev, "rev")(full);
+}
 // panic
 // stringify, strlen, strget, strset, strappend, strpush

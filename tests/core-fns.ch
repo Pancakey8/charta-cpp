@@ -32,9 +32,9 @@ fn test-comparisons () -> (int) {
 }
 
 fn test-align-ops () -> (int) {
-→ 1 2 3 4 5 ⇈ 5 ≠ ? 5 ≠ ? ↻ 2 ≠ ? ↷ 3 ≠ ? ↕ ⇈ 4 ≠ ? ◌ 1 ≠ ? 0
-                  ↓     ↓       ↓       ↓         ↓       ↓
-                  1     2       3       4         5       6
+→ 1 2 3 4 5 ⇈ 5 ≠ ? 5 ≠ ? ↻ 2 ≠ ? ↷ 3 ≠ ? ↕ ⇈ 4 ≠ ? ◌ 1 ≠ ? 1 2 3 4 ≡ 4 ≠ ? 0
+                  ↓     ↓       ↓       ↓         ↓       ↓               ↓
+                  1     2       3       4         5       6               7
 }
 
 fn expected-stk () -> (... int) {
@@ -54,6 +54,27 @@ fn test-stk-ops () -> (int) {
                          6 ? = example-stk ▭ 5 4 ←
                            ↓
                            0
+}
+
+fn rev-example () -> (... int) {
+→ 5 4 3 2 1
+}
+
+fn concat-example () -> (... int) {
+→ 2 3 4 7 1 2 3 4 5
+}
+
+fn test-more-stk-ops () -> (int) {
+↓                                                    0
+                                                     ↑
+                                                   4 ? = ↻ ↙ 3 ↘ 1 rev-example ◌ ↕ ↙ ←
+                                                                                     3
+                                                                                     ⇆
+                                                                                    expected-stk
+                                                                                     ↑ 
+→ example-stk ⧺ 5 ≠ ? ⇆ rev-example ≠ ? example-stk expected-stk ++ concat-example = ? 3
+                    ↓                 ↓                                             
+                    1                 2
 }
 
 fn test-char-ops () -> (int) {
@@ -86,11 +107,12 @@ fn test-type-info () -> (int) {
 }
 
 fn main () -> () {
-→   "< > ≤ ≥" test-comparisons test ↓
-↓            test test-equals "= ≠" ←
-→   "⇈ ↕ ↻ ↷ ◌" test-align-ops test ↓
-↓ test test-stk-ops "⊢ ⊢! ⊣ ⊣! ⤓ ▭" ←
-→      "ord chr" test-char-ops test ↓
-↓        test test-bool-ops "∧ ∨ ¬" ←
-→        "type" test-type-info test
+→     "< > ≤ ≥" test-comparisons test ↓
+↓              test test-equals "= ≠" ←
+→   "≡ ⇈ ↕ ↻ ↷ ◌" test-align-ops test ↓
+↓   test test-stk-ops "⊢ ⊢! ⊣ ⊣! ⤓ ▭" ←
+→        "ord chr" test-char-ops test ↓
+↓          test test-bool-ops "∧ ∨ ¬" ←
+→          "type" test-type-info test ↓
+  test test-more-stk-ops "⧺ ⇆ ↙ ↘ ++" ←
 }

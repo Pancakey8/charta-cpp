@@ -92,6 +92,10 @@ ch_value ch_valof_bool(char n) {
     return (ch_value){.kind = CH_VALK_BOOL, .value.b = n};
 }
 
+ch_value ch_valof_stack(struct ch_stack_node *n) {
+    return (ch_value){.kind = CH_VALK_STACK, .value.stk = n};
+}
+
 char *ch_valk_name(ch_value_kind k) {
     switch (k) {
     case CH_VALK_INT:
@@ -776,5 +780,134 @@ ch_stack_node *_mangle_(type_stk, "stack")(ch_stack_node **full) {
 ch_stack_node *_mangle_(type_of, "type")(ch_stack_node **full) {
     ch_stack_node *local = ch_stk_args(full, 1, 0);
     ch_stk_push(&local, ch_valof_int(local->val.kind));
+    return local;
+}
+
+ch_stack_node *_mangle_(dpt, "dpt")(ch_stack_node **full) {
+    size_t len = 0;
+    ch_stack_node *top = *full;
+    while (top != NULL) {
+        ++len;
+        top = top->next;
+    }
+    ch_stack_node *local = ch_stk_new();
+    ch_stk_push(&local, ch_valof_int(len));
+    return local;
+}
+
+ch_stack_node *_mangle_(len, "len")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 1, 0);
+    if (local->val.kind != CH_VALK_STACK) {
+        printf("ERR: 'len' expected stack, got '%s'\n",
+               ch_valk_name(local->val.kind));
+        exit(1);
+    }
+    size_t len = 0;
+    ch_stack_node *top = local->val.value.stk;
+    while (top != NULL) {
+        ++len;
+        top = top->next;
+    }
+    ch_stk_push(&local, ch_valof_int(len));
+    return local;
+}
+
+ch_stack_node *_mangle_(concat, "++")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 2, 0);
+    ch_value b = ch_stk_pop(&local);
+    ch_value a = ch_stk_pop(&local);
+    if (b.kind != CH_VALK_STACK || a.kind != CH_VALK_STACK) {
+        printf("ERR: '++' expected two stacks, got '%s' and '%s'",
+               ch_valk_name(b.kind), ch_valk_name(a.kind));
+        exit(1);
+    }
+    ch_stk_append(&b.value.stk, a.value.stk);
+    ch_stk_push(&local, b);
+    return local;
+}
+void split_stack(ch_stack_node *stk, int n, ch_stack_node **taken,
+                 ch_stack_node **rest) {
+    if (n <= 0) {
+        *taken = NULL;
+        *rest = stk;
+        return;
+    }
+
+    ch_stack_node *cur = stk;
+    for (int i = 1; i < n; ++i) {
+        if (!cur) {
+            printf("ERR: expected %d elements but fell short", n);
+            exit(1);
+        }
+        cur = cur->next;
+    }
+
+    if (!cur) {
+        printf("ERR: expected %d elements but fell short", n);
+        exit(1);
+    }
+
+    *taken = stk;
+    *rest = cur->next;
+    cur->next = NULL;
+}
+ch_stack_node *_mangle_(take, "take")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 2, 0);
+    ch_value n = ch_stk_pop(&local);
+    ch_value s = ch_stk_pop(&local);
+
+    if (n.kind != CH_VALK_INT || s.kind != CH_VALK_STACK) {
+        printf("ERR: 'take' expected int then stack, got '%s' then '%s'",
+               ch_valk_name(n.kind), ch_valk_name(s.kind));
+        exit(1);
+    }
+
+    ch_stack_node *taken, *rest;
+    split_stack(s.value.stk, n.value.i, &taken, &rest);
+
+    ch_stk_push(&local, ch_valof_stack(rest));
+    ch_stk_push(&local, ch_valof_stack(taken));
+    return local;
+}
+ch_stack_node *_mangle_(drop, "drop")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 2, 0);
+    ch_value n = ch_stk_pop(&local);
+    ch_value s = ch_stk_pop(&local);
+
+    if (n.kind != CH_VALK_INT || s.kind != CH_VALK_STACK) {
+        printf("ERR: 'drop' expected int then stack, got '%s' then '%s'",
+               ch_valk_name(n.kind), ch_valk_name(s.kind));
+        exit(1);
+    }
+
+    ch_stack_node *taken, *rest;
+    split_stack(s.value.stk, n.value.i, &taken, &rest);
+
+    while (taken) {
+        ch_stack_node *next = taken->next;
+        ch_val_delete(&taken->val);
+        free(taken);
+        taken = next;
+    }
+
+    ch_stk_push(&local, ch_valof_stack(rest));
+    return local;
+}
+ch_stack_node *_mangle_(rev, "rev")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 1, 0);
+    if (local->val.kind != CH_VALK_STACK) {
+        printf("ERR: 'rev' expected stack, got %s",
+               ch_valk_name(local->val.kind));
+        exit(1);
+    }
+    ch_stack_node *prev = NULL;
+    ch_stack_node *stk = local->val.value.stk;
+    while (stk) {
+      ch_stack_node *next = stk->next;
+      stk->next = prev;
+      prev = stk;
+      stk = next;
+    }
+    local->val.value.stk = prev;
     return local;
 }

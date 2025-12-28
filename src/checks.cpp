@@ -10,8 +10,8 @@ void print_stk(std::vector<checks::Type> const &stk) {
     if (stk.empty()) {
         std::println("[]");
     } else {
-        std::string s{stk.front().show()};
-        for (auto elem = stk.begin() + 1; elem != stk.end(); ++elem) {
+        std::string s{stk.back().show()};
+        for (auto elem = stk.rbegin() + 1; elem != stk.rend(); ++elem) {
             s += ", " + elem->show();
         }
         std::println("[{}]", s);
@@ -254,7 +254,7 @@ void checks::TypeChecker::try_apply(std::vector<Type> &stack, Function sig,
         stack.clear();
     }
 
-    stack.insert(stack.end(), sig.rets.begin(), sig.rets.end());
+    stack.insert(stack.end(), sig.rets.rbegin(), sig.rets.rend());
 
     if (sig.returns_many) {
         stack.emplace_back(tstack_many(*sig.returns_many));
@@ -471,9 +471,9 @@ void checks::TypeChecker::verify(traverser::Function fn) {
             break;
         case ir::Instruction::Exit: {
             auto have = stack.rbegin();
-            auto want = expected.rets.rbegin();
+            auto want = expected.rets.begin();
 
-            for (; want != expected.rets.rend(); ++have, ++want) {
+            for (; want != expected.rets.end(); ++have, ++want) {
                 if (have == stack.rend()) {
                     throw CheckError{
                         std::format("Needed to return '{}', got nothing",
@@ -641,6 +641,20 @@ static const std::unordered_map<std::string, checks::Function> internal_sigs {
   { "stack",  { {}, {tint} }},
   { "type",   { {generic("a")}, {tint, generic("a")} }},
   { "∈",      { {generic("a")}, {tint, generic("a")} }},
+
+  { "dpt", { {}, {tint} }},
+  { "≡",   { {}, {tint} }},
+
+  { "len", { {tstack_any}, {tint, tstack_any} }},
+  { "⧺",   { {tstack_any}, {tint, tstack_any} }},
+
+  { "++",   { {tstack_any, tstack_any}, {tstack_any} }},
+  { "take", { {tint, tstack_any}, {tstack_any, tstack_any} }},
+  { "↙",    { {tint, tstack_any}, {tstack_any, tstack_any} }},
+  { "drop", { {tint, tstack_any}, {tstack_any, tstack_any} }},
+  { "↘",    { {tint, tstack_any}, {tstack_any} }},
+  { "rev",  { {tstack_any}, {tstack_any} }},
+  { "⇆",    { {tstack_any}, {tstack_any} }},
 
   {"print", { {generic("a")}, {} } }
 };
