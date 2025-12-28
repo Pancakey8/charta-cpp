@@ -32,6 +32,8 @@ struct Token {
         LCurly,
         RCurly,
         QMark,
+        True,
+        False,
         Left,
         Right,
         Up,
@@ -75,6 +77,7 @@ struct Node {
         FloatLit,
         CharLit,
         StrLit,
+        BoolLit,
         Call,
         Branch,
         DirLeft,
@@ -84,7 +87,7 @@ struct Node {
         Space
     } kind;
     std::size_t length;
-    std::variant<int, float, char32_t, std::string> value;
+    std::variant<int, float, char32_t, std::string, bool> value;
 };
 
 using Grid = std::vector<std::vector<Node>>;

@@ -6,8 +6,8 @@
 
 namespace ir {
 struct IrPos {
-    int x;
-    int y;
+    long x;
+    long y;
     std::size_t length{0};
 };
 
@@ -17,6 +17,7 @@ struct Instruction {
         PushFloat,
         PushChar,
         PushStr,
+        PushBool,
         Call,
         JumpTrue,
         Goto,
@@ -26,7 +27,7 @@ struct Instruction {
         LabelPos
     } kind;
 
-    std::variant<int, float, char32_t, std::string, IrPos> value;
+    std::variant<int, float, char32_t, std::string, IrPos, bool> value;
 
     std::string show();
 };

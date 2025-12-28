@@ -4,15 +4,15 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdlib>
-#include <print>
+#include <format>
 #include <unordered_set>
 #include <vector>
 
 using namespace ir;
 
 struct Pos {
-    int x;
-    int y;
+    long x;
+    long y;
 
     Pos operator+(Pos other) { return Pos{x + other.x, y + other.y}; }
     Pos operator*(int scalar) { return Pos{x * scalar, y * scalar}; }
@@ -143,6 +143,11 @@ std::vector<Instruction> traverser::traverse(parser::Grid grid) {
             case parser::Node::StrLit:
                 instrs.emplace_back(Instruction{
                     Instruction::PushStr, std::get<std::string>(n->value)});
+                self(dir, next_pos, self);
+                break;
+            case parser::Node::BoolLit:
+                instrs.emplace_back(Instruction{Instruction::PushBool,
+                                                std::get<bool>(n->value)});
                 self(dir, next_pos, self);
                 break;
             case parser::Node::Call:

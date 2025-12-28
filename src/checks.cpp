@@ -408,6 +408,10 @@ void checks::TypeChecker::verify(traverser::Function fn) {
             stack.emplace_back(tfloat);
             ++current.ip;
             break;
+        case ir::Instruction::PushBool:
+            stack.emplace_back(tbool);
+            ++current.ip;
+            break;
         case ir::Instruction::PushChar:
             stack.emplace_back(tchar);
             ++current.ip;

@@ -85,8 +85,65 @@ void builder::Builder::error(std::string what) {
 
 void builder::Builder::error(std::size_t start, std::size_t end,
                              std::string what) {
-    error(what);
+    std::println("Err: {}", what);
+
+    if (end > input.size()) {
+        end = input.size();
+    }
+
+    std::size_t line = 1;
+    std::size_t line_start = 0;
+    std::size_t i = 0;
+
+    while (i < start) {
+        if (input[i] == '\n') {
+            ++line;
+            line_start = i + 1;
+        }
+        ++i;
+    }
+
+    std::size_t current_line = line;
+    std::size_t pos = line_start;
+
+    while (pos <= end) {
+        std::size_t line_end = pos;
+        while (line_end < input.size() && input[line_end] != '\n') {
+            ++line_end;
+        }
+
+        std::println(" {} | {}", current_line,
+                     input.substr(pos, line_end - pos));
+
+        std::string underline;
+        underline.reserve(line_end - pos + 1);
+
+        for (std::size_t j = pos; j < line_end; ++j) {
+            std::size_t absolute = j;
+            if (absolute >= start && absolute < end) {
+                underline.push_back('^');
+            } else {
+                underline.push_back(' ');
+            }
+        }
+
+        if (start == end && start == line_end) {
+            underline.push_back('^');
+        }
+
+        std::println("   | {}", underline);
+
+        if (line_end >= end) {
+            break;
+        }
+
+        pos = line_end + 1;
+        ++current_line;
+    }
+
+    std::exit(1);    
 }
+
 builder::Builder &builder::Builder::ir() {
     show_ir = !show_ir;
     return *this;

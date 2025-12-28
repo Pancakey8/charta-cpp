@@ -1,6 +1,7 @@
 #include "parser.hpp"
 #include <charconv>
 #include <cstddef>
+#include <print>
 #include <stdexcept>
 #include <string_view>
 #include <system_error>
@@ -191,6 +192,16 @@ bool parser::Lexer::parse_special() {
             return true;
         }
 
+        if (match("'T") || match("'⊤")) {
+            output.emplace_back(Token{start, cursor, 2, Token::True, {}});
+            return true;
+        }
+
+        if (match("'F") || match("'⊥")) {
+            output.emplace_back(Token{start, cursor, 2, Token::False, {}});
+            return true;
+        }
+
         return false;
     }
 }
@@ -322,7 +333,7 @@ std::vector<parser::Token> parser::Lexer::parse_all() {
         if (!parse_one()) {
             auto start = cursor;
             pop();
-            throw ParserError(start, cursor - start, "Unknown character");
+            throw ParserError(start, cursor, "Unknown character");
         }
     }
     return output;
@@ -341,19 +352,26 @@ std::optional<parser::Node> parser::Parser::parse_node() {
         switch (t->kind) {
         case Token::Int:
             ++cursor;
-            return Node{Node::IntLit, t->length, t->value};
+            return Node{Node::IntLit, t->length, std::get<int>(t->value)};
         case Token::Float:
             ++cursor;
-            return Node{Node::FloatLit, t->length, t->value};
+            return Node{Node::FloatLit, t->length, std::get<float>(t->value)};
         case Token::Char:
             ++cursor;
-            return Node{Node::CharLit, t->length, t->value};
+            return Node{Node::CharLit, t->length, std::get<char32_t>(t->value)};
         case Token::String:
             ++cursor;
-            return Node{Node::StrLit, t->length, t->value};
+            return Node{Node::StrLit, t->length,
+                        std::get<std::string>(t->value)};
         case Token::Symbol:
             ++cursor;
-            return Node{Node::Call, t->length, t->value};
+            return Node{Node::Call, t->length, std::get<std::string>(t->value)};
+        case Token::True:
+            ++cursor;
+            return Node{Node::BoolLit, t->length, true};
+        case Token::False:
+            ++cursor;
+            return Node{Node::BoolLit, t->length, false};
         case Token::QMark:
             ++cursor;
             return Node{Node::Branch, t->length, {}};

@@ -3,15 +3,7 @@
 #include "mangler.hpp"
 #include "parser.hpp"
 #include "traverser.hpp"
-#include "utf.hpp"
-#include <algorithm>
 #include <cassert>
-#include <cstdint>
-#include <iomanip>
-#include <print>
-#include <sstream>
-#include <stdexcept>
-#include <unordered_map>
 
 std::string intercalate(std::vector<std::string> list, std::string delim) {
     if (list.empty()) {
@@ -51,6 +43,10 @@ void emit_instrs(traverser::Function fn, std::string &out) {
         case ir::Instruction::PushFloat:
             out += "ch_stk_push(&__istack, ch_valof_float(" +
                    std::to_string(std::get<float>(ir.value)) + "));\n";
+            break;
+        case ir::Instruction::PushBool:
+            out += "ch_stk_push(&__istack, ch_valof_bool(" +
+                   std::to_string(std::get<bool>(ir.value)) + "));\n";
             break;
         case ir::Instruction::PushChar:
             out += "ch_stk_push(&__istack, ch_valof_char(" +
@@ -102,6 +98,10 @@ void emit_instrs(traverser::Function fn, std::string &out) {
 std::string backend::c::make_c(Program prog) {
     std::string full{};
     full += "#include \"core.h\"\n";
+    for (auto fn : prog) {
+        full += "ch_stack_node *" + mangle(fn.name) + "(ch_stack_node **);\n";
+    }
+    full += "\n";
     for (auto fn : prog) {
         full += "ch_stack_node *" + mangle(fn.name) +
                 "(ch_stack_node **__ifull) {\n";
