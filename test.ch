@@ -1,7 +1,7 @@
-fn todo-this (x : [#a]) -> (#a) {
-→ ⊢
+fn escape (x : #a) -> (#b) {
+→ 3 ▭ ⊢
 }
 
 fn main () -> () {
-→ 1 2 3 ▭ todo-this
+→ 10 escape print
 }

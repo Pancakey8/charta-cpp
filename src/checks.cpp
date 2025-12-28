@@ -149,13 +149,13 @@ bool is_matching(checks::Type got, checks::Type expected) {
         expected.kind == checks::Type::Generic) {
         return std::get<int>(got.val) == std::get<int>(expected.val);
     }
-    if (got.kind == checks::Type::Generic ||
-        expected.kind == checks::Type::Generic) {
-        return false;
-    }
     if (expected.kind == checks::Type::Liquid ||
         got.kind == checks::Type::Liquid) {
         return true;
+    }
+    if (got.kind == checks::Type::Generic ||
+        expected.kind == checks::Type::Generic) {
+        return false;
     }
     if (got.kind == checks::Type::Many) {
         return is_matching(*std::get<3>(got.val), expected);
@@ -227,6 +227,70 @@ bool is_matching(checks::Type got, checks::Type expected) {
     return got.kind == expected.kind;
 }
 
+void subst_all(std::vector<checks::Type> &types, int tag, checks::Type conc);
+
+void substitute(checks::Type &type, int tag, checks::Type conc) {
+    switch (type.kind) {
+    case checks::Type::Generic: {
+        if (std::get<int>(type.val) == tag) {
+            type = conc;
+        }
+        return;
+    }
+    case checks::Type::Many: {
+        auto t = std::get<std::shared_ptr<checks::Type>>(type.val);
+        substitute(*t, tag, conc);
+        return;
+    }
+    case checks::Type::Stack: {
+        auto &stk = std::get<checks::StackType>(type.val);
+        if (stk.kind == checks::StackType::Exact) {
+            auto &t = std::get<std::vector<checks::Type>>(stk.val);
+            subst_all(t, tag, conc);
+        } else if (stk.kind == checks::StackType::Many) {
+            auto t = std::get<std::shared_ptr<checks::Type>>(stk.val);
+            substitute(*t, tag, conc);
+            return;
+        }
+        return;
+    }
+    case checks::Type::Union: {
+        auto &t = std::get<std::vector<checks::Type>>(type.val);
+        subst_all(t, tag, conc);
+    }
+    default:
+        return;
+    }
+}
+
+void subst_all(std::vector<checks::Type> &types, int tag, checks::Type conc) {
+    for (auto &type : types) {
+        substitute(type, tag, conc);
+    }
+}
+
+bool any_unresolved(std::vector<checks::Type> const &types) {
+    for (auto const &type : types) {
+        switch (type.kind) {
+        case checks::Type::Generic:
+            return true;
+        case checks::Type::Stack: {
+            auto &stk = std::get<checks::StackType>(type.val);
+            if (stk.kind == checks::StackType::Exact) {
+                auto &ts = std::get<std::vector<checks::Type>>(stk.val);
+                return any_unresolved(ts);
+            } else if (stk.kind == checks::StackType::Many) {
+                auto t = std::get<std::shared_ptr<checks::Type>>(stk.val);
+                return any_unresolved({*t});
+            }
+        }
+        default:
+            break;
+        }
+    }
+    return false;
+}
+
 void checks::TypeChecker::try_apply(std::vector<Type> &stack, Function sig,
                                     std::string caller, std::string callee) {
     for (auto &expect : sig.args) {
@@ -239,28 +303,46 @@ void checks::TypeChecker::try_apply(std::vector<Type> &stack, Function sig,
         if (top.kind != Type::Many) {
             stack.pop_back();
         }
-
-        if (expect.kind == Type::Generic) {
-            auto tag = std::get<int>(expect.val);
-            for (auto &el : sig.args) {
-                if (el.kind == Type::Generic && std::get<int>(el.val) == tag) {
-                    el = top;
-                }
+        std::function<void(Type &)> resolve;
+        resolve = [&](Type &type) -> void {
+            switch (type.kind) {
+            case Type::Generic: {
+                auto tag = std::get<int>(type.val);
+                subst_all(sig.args, tag, top);
+                subst_all(sig.rets, tag, top);
+                return;
             }
-
-            for (auto &el : sig.rets) {
-                if (el.kind == Type::Generic && std::get<int>(el.val) == tag) {
-                    el = top;
+            case Type::Stack: {
+                auto &stk = std::get<checks::StackType>(type.val);
+                if (stk.kind == checks::StackType::Exact) {
+                    auto &ts = std::get<std::vector<checks::Type>>(stk.val);
+                    for (auto &t : ts) {
+                        resolve(t);
+                    }
+                    return;
+                } else if (stk.kind == checks::StackType::Many) {
+                    auto t = std::get<std::shared_ptr<checks::Type>>(stk.val);
+                    resolve(*t);
+                    return;
                 }
+                return;
             }
-            continue;
-        }
+            default:
+                break;
+            }
+        };
+        resolve(expect);
 
         if (!is_matching(top, expect)) {
             throw CheckError{std::format("'{}' expected '{}', got '{}'", callee,
                                          expect.show(), top.show()),
                              caller};
         }
+    }
+
+    if (any_unresolved(sig.args) || any_unresolved(sig.rets)) {
+        throw CheckError{std::format("'{}' has unresolved generic", callee),
+                         caller};
     }
 
     if (sig.is_ellipses) {
