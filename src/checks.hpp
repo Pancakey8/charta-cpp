@@ -1,6 +1,7 @@
 #pragma once
 
 #include "traverser.hpp"
+#include <functional>
 #include <memory>
 #include <optional>
 #include <unordered_map>
@@ -32,10 +33,11 @@ struct Type {
         Union,
         Stack,
         Generic,
+        Liquid,
         Many
     } kind;
     std::variant<std::string, StackType, std::vector<Type>,
-                 std::shared_ptr<Type>>
+                 std::shared_ptr<Type>, int>
         val;
 
     std::string show() const;
@@ -62,7 +64,7 @@ struct Function {
 
 class TypeChecker {
     std::vector<traverser::Function> fns;
-    std::unordered_map<std::string, Function> sigs;
+    std::unordered_map<std::string, std::function<Function()>> sigs;
     bool show_typechecks;
 
     void collect_sigs();

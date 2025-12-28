@@ -5,6 +5,7 @@
 #include <cassert>
 #include <functional>
 #include <print>
+#include <unordered_map>
 
 void print_stk(std::vector<checks::Type> const &stk) {
     if (stk.empty()) {
@@ -18,8 +19,15 @@ void print_stk(std::vector<checks::Type> const &stk) {
     }
 }
 
-checks::Type generic(std::string const x) {
-    return checks::Type{checks::Type::Generic, "#" + x};
+int fresh() {
+    static int counter = 0;
+    return counter++;
+}
+
+checks::Type generic() { return checks::Type{checks::Type::Generic, fresh()}; }
+
+std::function<checks::Function()> funit(checks::Function x) {
+    return [x]() { return x; };
 }
 
 template <typename... Ts> checks::Type tsum(Ts... types) {
@@ -46,14 +54,16 @@ static const checks::Type tint = checks::Type{checks::Type::Int, {}};
 static const checks::Type tfloat = checks::Type{checks::Type::Float, {}};
 static const checks::Type tstring = checks::Type{checks::Type::String, {}};
 static const checks::Type tchar = checks::Type{checks::Type::Char, {}};
+static const checks::Type tliquid = checks::Type{checks::Type::Liquid, {}};
 
 static const checks::Type tstack_any = checks::Type{
     checks::Type::Stack, checks::StackType{checks::StackType::Unknown, {}}};
 
-checks::Type decl2type(parser::TypeSig decl, std::string fname) {
+checks::Type decl2type(parser::TypeSig decl, std::string fname,
+                       std::unordered_map<std::string, int> &generics) {
     if (decl.is_stack) {
         decl.is_stack = false;
-        auto type = decl2type(decl, fname);
+        auto type = decl2type(decl, fname, generics);
         auto stk = checks::Type{
             checks::Type::Stack,
             checks::StackType{checks::StackType::Many,
@@ -75,7 +85,13 @@ checks::Type decl2type(parser::TypeSig decl, std::string fname) {
         return tstack_any;
     } else {
         if (decl.name.starts_with("#")) {
-            return {checks::Type::Generic, decl.name};
+            if (generics.contains(decl.name)) {
+                return {checks::Type::Generic, generics[decl.name]};
+            } else {
+                int id = fresh();
+                generics[decl.name] = id;
+                return {checks::Type::Generic, id};
+            }
         } else {
             throw checks::CheckError(
                 "Type '" + decl.name + "' is not recognized.", fname);
@@ -87,32 +103,33 @@ void checks::TypeChecker::collect_sigs() {
     for (auto &decl : fns) {
         Function func{};
         func.args.reserve(decl.args.args.size());
+        std::unordered_map<std::string, int> generics{};
         if (decl.args.kind == parser::Argument::Ellipses) {
             func.is_ellipses = true;
         }
         for (auto &[name, type] : decl.args.args) {
-            func.args.emplace_back(decl2type(type, decl.name));
+            func.args.emplace_back(decl2type(type, decl.name, generics));
         }
         if (decl.rets.rest) {
-            func.returns_many = decl2type(*decl.rets.rest, decl.name);
+            func.returns_many = decl2type(*decl.rets.rest, decl.name, generics);
         }
         func.rets.reserve(decl.rets.args.size());
         for (auto &type : decl.rets.args) {
-            func.rets.emplace_back(decl2type(type, decl.name));
+            func.rets.emplace_back(decl2type(type, decl.name, generics));
         }
-        sigs.emplace(decl.name, func);
+        sigs.emplace(decl.name, funit(func));
         std::string args{};
         if (!func.args.empty()) {
-            args += func.args.front().show();
-            for (auto elem = func.args.begin() + 1; elem != func.args.end();
+            args += func.args.back().show();
+            for (auto elem = func.args.rbegin() + 1; elem != func.args.rend();
                  ++elem) {
                 args += ", " + elem->show();
             }
         }
         std::string rets{};
         if (!func.rets.empty()) {
-            rets += func.rets.front().show();
-            for (auto elem = func.rets.begin() + 1; elem != func.rets.end();
+            rets += func.rets.back().show();
+            for (auto elem = func.rets.rbegin() + 1; elem != func.rets.rend();
                  ++elem) {
                 rets += ", " + elem->show();
             }
@@ -128,8 +145,16 @@ void checks::TypeChecker::collect_sigs() {
 }
 
 bool is_matching(checks::Type got, checks::Type expected) {
+    if (got.kind == checks::Type::Generic &&
+        expected.kind == checks::Type::Generic) {
+        return std::get<int>(got.val) == std::get<int>(expected.val);
+    }
     if (got.kind == checks::Type::Generic ||
         expected.kind == checks::Type::Generic) {
+        return false;
+    }
+    if (expected.kind == checks::Type::Liquid ||
+        got.kind == checks::Type::Liquid) {
         return true;
     }
     if (got.kind == checks::Type::Many) {
@@ -204,7 +229,7 @@ bool is_matching(checks::Type got, checks::Type expected) {
 
 void checks::TypeChecker::try_apply(std::vector<Type> &stack, Function sig,
                                     std::string caller, std::string callee) {
-    for (auto const &expect : sig.args) {
+    for (auto &expect : sig.args) {
         if (stack.empty()) {
             throw CheckError{std::format("'{}' expected '{}', got nothing",
                                          callee, expect.show()),
@@ -214,29 +239,17 @@ void checks::TypeChecker::try_apply(std::vector<Type> &stack, Function sig,
         if (top.kind != Type::Many) {
             stack.pop_back();
         }
-        if (top.kind == Type::Generic) {
-            auto tag = std::get<std::string>(top.val);
-            for (auto &el : stack) {
-                if (el.kind == Type::Generic &&
-                    std::get<std::string>(el.val) == tag) {
-                    el = expect;
-                }
-            }
-            continue;
-        }
 
         if (expect.kind == Type::Generic) {
-            auto tag = std::get<std::string>(expect.val);
+            auto tag = std::get<int>(expect.val);
             for (auto &el : sig.args) {
-                if (el.kind == Type::Generic &&
-                    std::get<std::string>(el.val) == tag) {
+                if (el.kind == Type::Generic && std::get<int>(el.val) == tag) {
                     el = top;
                 }
             }
 
             for (auto &el : sig.rets) {
-                if (el.kind == Type::Generic &&
-                    std::get<std::string>(el.val) == tag) {
+                if (el.kind == Type::Generic && std::get<int>(el.val) == tag) {
                     el = top;
                 }
             }
@@ -363,12 +376,12 @@ bool checks::TypeChecker::unify(std::vector<checks::Type> &prev,
 }
 
 void checks::TypeChecker::verify(traverser::Function fn) {
-    auto expected = sigs.at(fn.name);
+    auto expected = sigs.at(fn.name)();
     std::vector<Type> initial;
     if (expected.is_ellipses) {
         initial.emplace_back(tstack_any);
     }
-    initial.insert(initial.end(), expected.args.begin(), expected.args.end());
+    initial.insert(initial.end(), expected.args.rbegin(), expected.args.rend());
 
     std::vector<State> states{State{0, initial}};
     std::unordered_map<std::size_t, std::vector<Type>> been_to{};
@@ -428,7 +441,7 @@ void checks::TypeChecker::verify(traverser::Function fn) {
                                 callee),
                     fn.name);
             }
-            try_apply(stack, sigs[callee], fn.name, callee);
+            try_apply(stack, sigs[callee](), fn.name, callee);
             ++current.ip;
             break;
         }
@@ -533,8 +546,10 @@ std::string checks::Type::show() const {
         return std::get<StackType>(val).show();
     }
     case Generic: {
-        return std::get<std::string>(val);
+        return "#" + std::to_string(std::get<int>(val));
     }
+    case Liquid:
+        return "liquid";
     case Union: {
         auto vals = std::get<2>(val);
         std::string un{vals.front().show()};
@@ -569,96 +584,134 @@ std::string checks::StackType::show() const {
     }
 }
 
-// clang-format off
-static const std::unordered_map<std::string, checks::Function> internal_sigs {
-  {"⇈",   { {generic("a")}, {generic("a"), generic("a")} }},
-  {"dup", { {generic("a")}, {generic("a"), generic("a")} }},
+checks::Function dup_sig() {
+    auto a = generic();
+    return {{a}, {a, a}};
+}
 
-  {"=",   { {generic("a"), generic("b")}, {tbool} }},
-  {"!=",  { {generic("a"), generic("b")}, {tbool} }},
-  {"≠",   { {generic("a"), generic("b")}, {tbool} }},
-  {"<",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tbool} }},
-  {">",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tbool} }},
-  {">=",  { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tbool} }},
-  {"<=",  { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tbool} }},
-  {"≤",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tbool} }},
-  {"≥",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tbool} }},
+checks::Function swp_sig() {
+    auto a = generic();
+    auto b = generic();
+    return {{a, b}, {b, a}};
+}
 
-  {"↕",   { {generic("a"), generic("b")}, {generic("b"), generic("a")} }},
-  {"swp", { {generic("a"), generic("b")}, {generic("b"), generic("a")} }},
+checks::Function rot_sig() {
+    auto a = generic();
+    auto b = generic();
+    auto c = generic();
+    return {{a, b, c}, {c, a, b}};
+}
 
-  {"rot", { {generic("a"), generic("b"), generic("c")},
-            {generic("c"), generic("a"), generic("b")} }},
-  {"↻",   { {generic("a"), generic("b"), generic("c")},
-            {generic("c"), generic("a"), generic("b")} }},
+checks::Function rot_rev_sig() {
+    auto a = generic();
+    auto b = generic();
+    auto c = generic();
+    return {{a, b, c}, {b, c, a}};
+}
 
-  {"rot-", { {generic("a"), generic("b"), generic("c")},
-             {generic("b"), generic("c"), generic("a")} }},
-  {"↷",    { {generic("a"), generic("b"), generic("c")},
-             {generic("b"), generic("c"), generic("a")} }},
+checks::Function eq_sig() {
+    auto a = generic();
+    auto b = generic();
+    return {{a, b}, {tbool}};
+}
 
-  {"dbg", { {}, {} }},
+checks::Function cmp_sig() {
+    return {{tsum(tint, tfloat), tsum(tint, tfloat)}, {tbool}};
+}
 
-  {"+",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tsum(tint, tfloat)} }},
-  {"-",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tsum(tint, tfloat)} }},
-  {"*",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tsum(tint, tfloat)} }},
-  {"/",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tsum(tint, tfloat)} }},
-  {"%",   { {tsum(tint, tfloat), tsum(tint, tfloat)}, {tsum(tint, tfloat)} }},
+checks::Function arithm_sig() {
+    return {{tsum(tint, tfloat), tsum(tint, tfloat)}, {tsum(tint, tfloat)}};
+}
 
-  {"box", { {}, {tstack_any}, true, {} }},
-  {"▭",   { {}, {tstack_any}, true, {} }},
+checks::Function pop_sig() {
+    auto a = generic();
+    return {{a}, {}};
+}
 
-  {"pop", { {generic("a")}, {} }},
-  {"◌",   { {generic("a")}, {} }},
+checks::Function ins_sig() {
+    auto a = generic();
+    return {{a, tstack_any}, {tstack_any}};
+}
 
-  {"ins", { {generic("a"), tstack_any}, {tstack_any} }},
-  {"⤓",   { {generic("a"), tstack_any}, {tstack_any} }},
+checks::Function recv_sig() { return {{tstack_any}, {tliquid, tstack_any}}; }
+checks::Function bbool_sig() { return {{tbool, tbool}, {tbool}}; }
+checks::Function typeid_sig() { return {{}, {tint}}; }
+checks::Function typeof_sig() {
+    checks::Type a = generic();
+    return {{a}, {tint, a}};
+}
+checks::Function print_sig() {
+    checks::Type a = generic();
+    return {{a}, {}};
+}
 
-  {"fst!", { {tstack_any}, {generic("a"), tstack_any} }},
-  {"⊢!",   { {tstack_any}, {generic("a"), tstack_any} }},
-  {"lst!", { {tstack_any}, {generic("a"), tstack_any} }},
-  {"⊣!",   { {tstack_any}, {generic("a"), tstack_any} }},
-  {"fst",  { {tstack_any}, {generic("a"), tstack_any} }},
-  {"⊢",    { {tstack_any}, {generic("a"), tstack_any} }},
-  {"lst",  { {tstack_any}, {generic("a"), tstack_any} }},
-  {"⊣",    { {tstack_any}, {generic("a"), tstack_any} }},
-
-  { "ord", { {tchar}, {tint}  }},
-  { "chr", { {tint},  {tchar} }},
-
-  { "&&", { {tbool, tbool}, {tbool} }},
-  { "∧",  { {tbool, tbool}, {tbool} }},
-  { "||", { {tbool, tbool}, {tbool} }},
-  { "∨",  { {tbool, tbool}, {tbool} }},
-  { "!",  { {tbool},        {tbool} }},
-  { "¬",  { {tbool},        {tbool} }},
-
-  { "int",    { {}, {tint} }},
-  { "float",  { {}, {tint} }},
-  { "char",   { {}, {tint} }},
-  { "bool",   { {}, {tint} }},
-  { "string", { {}, {tint} }},
-  { "stack",  { {}, {tint} }},
-  { "type",   { {generic("a")}, {tint, generic("a")} }},
-  { "∈",      { {generic("a")}, {tint, generic("a")} }},
-
-  { "dpt", { {}, {tint} }},
-  { "≡",   { {}, {tint} }},
-
-  { "len", { {tstack_any}, {tint, tstack_any} }},
-  { "⧺",   { {tstack_any}, {tint, tstack_any} }},
-
-  { "++",   { {tstack_any, tstack_any}, {tstack_any} }},
-  { "take", { {tint, tstack_any}, {tstack_any, tstack_any} }},
-  { "↙",    { {tint, tstack_any}, {tstack_any, tstack_any} }},
-  { "drop", { {tint, tstack_any}, {tstack_any, tstack_any} }},
-  { "↘",    { {tint, tstack_any}, {tstack_any} }},
-  { "rev",  { {tstack_any}, {tstack_any} }},
-  { "⇆",    { {tstack_any}, {tstack_any} }},
-
-  {"print", { {generic("a")}, {} } }
-};
-// clang-format on
+static const std::unordered_map<std::string, std::function<checks::Function()>>
+    internal_sigs{
+        {"⇈", dup_sig},
+        {"dup", dup_sig},
+        {"=", eq_sig},
+        {"!=", eq_sig},
+        {"≠", eq_sig},
+        {"<", cmp_sig},
+        {">", cmp_sig},
+        {"<=", cmp_sig},
+        {">=", cmp_sig},
+        {"≤", cmp_sig},
+        {"≥", cmp_sig},
+        {"swp", swp_sig},
+        {"↕", swp_sig},
+        {"rot", rot_sig},
+        {"↻", rot_sig},
+        {"rot-", rot_rev_sig},
+        {"↷", rot_rev_sig},
+        {"dbg", funit({{}, {}})},
+        {"+", arithm_sig},
+        {"-", arithm_sig},
+        {"*", arithm_sig},
+        {"/", arithm_sig},
+        {"%", arithm_sig},
+        {"box", funit({{}, {tstack_any}, true, {}})},
+        {"▭", funit({{}, {tstack_any}, true, {}})},
+        {"pop", pop_sig},
+        {"◌", pop_sig},
+        {"ins", ins_sig},
+        {"⤓", ins_sig},
+        {"fst!", recv_sig},
+        {"⊢!", recv_sig},
+        {"lst!", recv_sig},
+        {"⊣!", recv_sig},
+        {"fst", recv_sig},
+        {"⊢", recv_sig},
+        {"lst", recv_sig},
+        {"⊣", recv_sig},
+        {"ord", funit({{tchar}, {tint}})},
+        {"chr", funit({{tint}, {tchar}})},
+        {"&&", bbool_sig},
+        {"∧", bbool_sig},
+        {"||", bbool_sig},
+        {"∨", bbool_sig},
+        {"!", funit({{tbool}, {tbool}})},
+        {"¬", funit({{tbool}, {tbool}})},
+        {"int", typeid_sig},
+        {"float", typeid_sig},
+        {"char", typeid_sig},
+        {"bool", typeid_sig},
+        {"string", typeid_sig},
+        {"stack", typeid_sig},
+        {"type", typeof_sig},
+        {"∈", typeof_sig},
+        {"dpt", funit({{}, {tint}})},
+        {"≡", funit({{}, {tint}})},
+        {"len", funit({{tstack_any}, {tint, tstack_any}})},
+        {"⧺", funit({{tstack_any}, {tint, tstack_any}})},
+        {"++", funit({{tstack_any, tstack_any}, {tstack_any}})},
+        {"take", funit({{tint, tstack_any}, {tstack_any, tstack_any}})},
+        {"↙", funit({{tint, tstack_any}, {tstack_any, tstack_any}})},
+        {"drop", funit({{tint, tstack_any}, {tstack_any}})},
+        {"↘", funit({{tint, tstack_any}, {tstack_any}})},
+        {"rev", funit({{tstack_any}, {tstack_any}})},
+        {"⇆", funit({{tstack_any}, {tstack_any}})},
+        {"print", print_sig}};
 
 checks::TypeChecker::TypeChecker(std::vector<traverser::Function> fns,
                                  bool show_typechecks)
@@ -675,10 +728,11 @@ bool checks::Type::operator==(Type const &other) const {
     case Bool:
     case Char:
     case String:
+    case Liquid:
         return true;
     case Union: {
-        auto const &a = std::get<2>(val);
-        auto const &b = std::get<2>(other.val);
+        auto const &a = std::get<std::vector<Type>>(val);
+        auto const &b = std::get<std::vector<Type>>(other.val);
         if (a.size() != b.size())
             return false;
         for (auto &t : a) {
@@ -689,11 +743,12 @@ bool checks::Type::operator==(Type const &other) const {
         return true;
     }
     case Stack:
-        return std::get<1>(val) == std::get<1>(other.val);
+        return std::get<StackType>(val) == std::get<StackType>(other.val);
     case Generic:
-        return std::get<0>(val) == std::get<0>(other.val);
+        return std::get<int>(val) == std::get<int>(other.val);
     case Many:
-        return *std::get<3>(val) == *std::get<3>(other.val);
+        return *std::get<std::shared_ptr<Type>>(val) ==
+               *std::get<std::shared_ptr<Type>>(other.val);
     }
 }
 
@@ -703,9 +758,11 @@ bool checks::StackType::operator==(StackType const &other) const {
 
     switch (kind) {
     case Exact:
-        return std::get<0>(val) == std::get<0>(other.val);
+        return std::get<std::vector<Type>>(val) ==
+               std::get<std::vector<Type>>(other.val);
     case Many:
-        return *std::get<1>(val) == *std::get<1>(other.val);
+        return *std::get<std::shared_ptr<Type>>(val) ==
+               *std::get<std::shared_ptr<Type>>(other.val);
     case Unknown:
         return true;
     }
