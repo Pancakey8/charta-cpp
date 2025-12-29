@@ -101,6 +101,40 @@ bool parser::Lexer::parse_symbol() {
     return true;
 }
 
+bool parser::Lexer::parse_ffiquote() {
+    auto start = cursor;
+    if (!match("cffi")) {
+        return false;
+    }
+    while (auto p = peek()) {
+        if (p == U' ' || p == U'\t')
+            pop();
+        else
+            break;
+    }
+    if (!match("{")) {
+        throw ParserError{start, cursor, "Expected '{'"};
+    }
+    auto block_start = cursor;
+    int depth = 1;
+    while (auto p = peek()) {
+        if (p == U'}') {
+            --depth;
+        } else if (p == U'{') {
+            ++depth;
+        }
+        if (depth == 0) {
+            output.emplace_back(
+                Token{start, cursor, cursor - start, Token::FFIQuote,
+                      input.substr(block_start, cursor - block_start)});
+            pop();
+            return true;
+        }
+        pop();
+    }
+    throw ParserError(block_start, cursor, "Unclosed cffi block");
+}
+
 bool parser::Lexer::parse_special() {
     auto start = cursor;
     switch (peek()) {
@@ -324,8 +358,8 @@ bool parser::Lexer::parse_space() {
 }
 
 bool parser::Lexer::parse_one() {
-    return parse_space() || parse_int_or_float() || parse_special() ||
-           parse_char() || parse_string() || parse_symbol();
+    return parse_ffiquote() || parse_space() || parse_int_or_float() ||
+           parse_special() || parse_char() || parse_string() || parse_symbol();
 }
 
 std::vector<parser::Token> parser::Lexer::parse_all() {
@@ -550,7 +584,16 @@ std::optional<parser::FnDecl> parser::Parser::parse_fndecl() {
         rets.args.emplace_back(*typ);
     }
     spaces();
+    if (auto p = peek(); p && p->kind == Token::FFIQuote) {
+        ++cursor;
+        return FnDecl{
+            name,
+            Argument{is_ellipses ? Argument::Ellipses : Argument::Limited,
+                     args},
+            rets, std::get<std::string>(p->value)};
+    }
     if (auto p = peek(); !(p && p->kind == Token::LCurly)) {
+        std::println("{}", int(p->kind));
         throw ParserError(p->start, p->end, "Expected '{'");
     }
     ++cursor;

@@ -39,6 +39,7 @@ struct Token {
         Up,
         Down,
         Linebreak,
+        FFIQuote,
         Space
     } kind;
     std::variant<int, float, char32_t, std::string> value;
@@ -65,6 +66,7 @@ class Lexer {
     bool parse_string();
     bool parse_symbol();
     bool parse_special();
+    bool parse_ffiquote();
     bool parse_space();
 
     bool parse_one();
@@ -111,7 +113,7 @@ struct FnDecl {
     std::string name;
     Argument args;
     Return rets;
-    Grid body;
+    std::variant<Grid, std::string> body;
 };
 
 using TopLevel = std::variant<FnDecl>;

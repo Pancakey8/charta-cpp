@@ -1,9 +1,11 @@
 #include "checks.hpp"
 #include "ir.hpp"
 #include "parser.hpp"
+#include "traverser.hpp"
 #include <algorithm>
 #include <cassert>
 #include <functional>
+#include <iostream>
 #include <print>
 #include <unordered_map>
 
@@ -101,45 +103,57 @@ checks::Type decl2type(parser::TypeSig decl, std::string fname,
 
 void checks::TypeChecker::collect_sigs() {
     for (auto &decl : fns) {
+        parser::Argument args;
+        parser::Return rets;
+        std::string name;
+        if (auto native = std::get_if<traverser::NativeFn>(&decl)) {
+            args = native->args;
+            name = native->name;
+            rets = native->rets;
+        } else if (auto embed = std::get_if<traverser::EmbeddedFn>(&decl)) {
+            args = embed->args;
+            name = embed->name;
+            rets = embed->rets;
+        }
         Function func{};
-        func.args.reserve(decl.args.args.size());
+        func.args.reserve(args.args.size());
         std::unordered_map<std::string, int> generics{};
-        if (decl.args.kind == parser::Argument::Ellipses) {
+        if (args.kind == parser::Argument::Ellipses) {
             func.is_ellipses = true;
         }
-        for (auto &[name, type] : decl.args.args) {
-            func.args.emplace_back(decl2type(type, decl.name, generics));
+        for (auto &[name, type] : args.args) {
+            func.args.emplace_back(decl2type(type, name, generics));
         }
-        if (decl.rets.rest) {
-            func.returns_many = decl2type(*decl.rets.rest, decl.name, generics);
+        if (rets.rest) {
+            func.returns_many = decl2type(*rets.rest, name, generics);
         }
-        func.rets.reserve(decl.rets.args.size());
-        for (auto &type : decl.rets.args) {
-            func.rets.emplace_back(decl2type(type, decl.name, generics));
+        func.rets.reserve(rets.args.size());
+        for (auto &type : rets.args) {
+            func.rets.emplace_back(decl2type(type, name, generics));
         }
-        sigs.emplace(decl.name, funit(func));
-        std::string args{};
+        sigs.emplace(name, funit(func));
+        std::string args_str{};
         if (!func.args.empty()) {
-            args += func.args.back().show();
+            args_str += func.args.back().show();
             for (auto elem = func.args.rbegin() + 1; elem != func.args.rend();
                  ++elem) {
-                args += ", " + elem->show();
+                args_str += ", " + elem->show();
             }
         }
-        std::string rets{};
+        std::string rets_str{};
         if (!func.rets.empty()) {
-            rets += func.rets.back().show();
+            rets_str += func.rets.back().show();
             for (auto elem = func.rets.rbegin() + 1; elem != func.rets.rend();
                  ++elem) {
-                rets += ", " + elem->show();
+                rets_str += ", " + elem->show();
             }
         }
         std::string ellipses{func.is_ellipses ? ", ..." : ""};
         std::string retmany{
             func.returns_many ? ", ..." + func.returns_many->show() : ""};
         if (show_typechecks) {
-            std::println("fn {} :: ({}{}) -> ({}{})", decl.name, args, ellipses,
-                         rets, retmany);
+            std::println("fn {} :: ({}{}) -> ({}{})", name, args_str, ellipses,
+                         rets_str, retmany);
         }
     }
 }
@@ -158,13 +172,15 @@ bool is_matching(checks::Type got, checks::Type expected) {
         return false;
     }
     if (got.kind == checks::Type::Many) {
-        return is_matching(*std::get<3>(got.val), expected);
+        return is_matching(*std::get<std::shared_ptr<checks::Type>>(got.val),
+                           expected);
     }
     if (expected.kind == checks::Type::Many) {
-        return is_matching(got, *std::get<3>(expected.val));
+        return is_matching(
+            got, *std::get<std::shared_ptr<checks::Type>>(expected.val));
     }
     if (expected.kind == checks::Type::Union) {
-        for (auto &t : std::get<2>(expected.val)) {
+        for (auto &t : std::get<std::vector<checks::Type>>(expected.val)) {
             if (is_matching(got, t)) {
                 return true;
             }
@@ -172,7 +188,7 @@ bool is_matching(checks::Type got, checks::Type expected) {
         return false;
     }
     if (got.kind == checks::Type::Union) {
-        for (auto &t : std::get<2>(got.val)) {
+        for (auto &t : std::get<std::vector<checks::Type>>(got.val)) {
             if (is_matching(t, expected)) {
                 return true;
             }
@@ -188,12 +204,15 @@ bool is_matching(checks::Type got, checks::Type expected) {
             return true;
         }
         if (stk_expected.kind == checks::StackType::Many) {
-            checks::Type expect_all = *std::get<1>(stk_expected.val);
+            checks::Type expect_all =
+                *std::get<std::shared_ptr<checks::Type>>(stk_expected.val);
             if (stk_got.kind == checks::StackType::Many) {
-                checks::Type got_all = *std::get<1>(stk_expected.val);
+                checks::Type got_all =
+                    *std::get<std::shared_ptr<checks::Type>>(stk_expected.val);
                 return is_matching(got_all, expect_all);
             } else {
-                auto got_exact = std::get<0>(stk_got.val);
+                auto got_exact =
+                    std::get<std::vector<checks::Type>>(stk_got.val);
                 for (auto &elem : got_exact) {
                     if (!is_matching(elem, expect_all)) {
                         return false;
@@ -202,9 +221,11 @@ bool is_matching(checks::Type got, checks::Type expected) {
                 return true;
             }
         } else {
-            auto exp_exact = std::get<0>(stk_expected.val);
+            auto exp_exact =
+                std::get<std::vector<checks::Type>>(stk_expected.val);
             if (stk_got.kind == checks::StackType::Many) {
-                checks::Type got_all = *std::get<1>(stk_expected.val);
+                checks::Type got_all =
+                    *std::get<std::shared_ptr<checks::Type>>(stk_expected.val);
                 for (auto &elem : exp_exact) {
                     if (!is_matching(got_all, elem)) {
                         return false;
@@ -212,7 +233,8 @@ bool is_matching(checks::Type got, checks::Type expected) {
                 }
                 return true;
             } else {
-                auto got_exact = std::get<0>(stk_got.val);
+                auto got_exact =
+                    std::get<std::vector<checks::Type>>(stk_got.val);
                 if (got_exact.size() != exp_exact.size())
                     return false;
                 for (std::size_t i = 0; i < got_exact.size(); ++i) {
@@ -269,20 +291,28 @@ void subst_all(std::vector<checks::Type> &types, int tag, checks::Type conc) {
     }
 }
 
-bool any_unresolved(std::vector<checks::Type> const &types) {
+bool any_unresolved(std::vector<checks::Type> const &types,
+                    std::vector<int> const &our_generics) {
     for (auto const &type : types) {
         switch (type.kind) {
-        case checks::Type::Generic:
-            return true;
+        case checks::Type::Generic: {
+            int id = std::get<int>(type.val);
+            if (std::find(our_generics.begin(), our_generics.end(), id) ==
+                our_generics.end()) {
+                return true;
+            }
+            break;            
+        }
         case checks::Type::Stack: {
             auto &stk = std::get<checks::StackType>(type.val);
             if (stk.kind == checks::StackType::Exact) {
                 auto &ts = std::get<std::vector<checks::Type>>(stk.val);
-                return any_unresolved(ts);
+                return any_unresolved(ts, our_generics);
             } else if (stk.kind == checks::StackType::Many) {
                 auto t = std::get<std::shared_ptr<checks::Type>>(stk.val);
-                return any_unresolved({*t});
+                return any_unresolved({*t}, our_generics);
             }
+            break;            
         }
         default:
             break;
@@ -293,6 +323,13 @@ bool any_unresolved(std::vector<checks::Type> const &types) {
 
 void checks::TypeChecker::try_apply(std::vector<Type> &stack, Function sig,
                                     std::string caller, std::string callee) {
+    std::vector<int> our_generics{};
+    for (auto &elem : stack) {
+        if (elem.kind == Type::Generic) {
+            our_generics.emplace_back(std::get<int>(elem.val));
+        }
+    }
+
     for (auto &expect : sig.args) {
         if (stack.empty()) {
             throw CheckError{std::format("'{}' expected '{}', got nothing",
@@ -340,7 +377,8 @@ void checks::TypeChecker::try_apply(std::vector<Type> &stack, Function sig,
         }
     }
 
-    if (any_unresolved(sig.args) || any_unresolved(sig.rets)) {
+    if (any_unresolved(sig.args, our_generics) ||
+        any_unresolved(sig.rets, our_generics)) {
         throw CheckError{std::format("'{}' has unresolved generic", callee),
                          caller};
     }
@@ -457,7 +495,7 @@ bool checks::TypeChecker::unify(std::vector<checks::Type> &prev,
     return true;
 }
 
-void checks::TypeChecker::verify(traverser::Function fn) {
+void checks::TypeChecker::verify(traverser::NativeFn fn) {
     auto expected = sigs.at(fn.name)();
     std::vector<Type> initial;
     if (expected.is_ellipses) {
@@ -608,7 +646,9 @@ void checks::TypeChecker::verify(traverser::Function fn) {
 void checks::TypeChecker::check() {
     collect_sigs();
     for (auto &fn : fns) {
-        verify(fn);
+        if (auto native = std::get_if<traverser::NativeFn>(&fn)) {
+            verify(*native);
+        }
     }
 }
 

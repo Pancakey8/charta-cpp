@@ -4,6 +4,7 @@
 #include "parser.hpp"
 #include "traverser.hpp"
 #include <cassert>
+#include <sstream>
 
 std::string intercalate(std::vector<std::string> list, std::string delim) {
     if (list.empty()) {
@@ -33,7 +34,53 @@ std::string get_temp() {
     return "__itemp" + std::to_string(temp_counter++);
 }
 
-void emit_instrs(traverser::Function fn, std::string &out) {
+std::string process_returns(traverser::EmbeddedFn const &fn,
+                            std::string const &defers) {
+    std::istringstream in(fn.body);
+    std::string out;
+    std::string line;
+    std::string const match{"@return@"};
+
+    while (std::getline(in, line)) {
+        size_t first = line.find_first_not_of(" \t");
+        if (first != std::string::npos &&
+            line.compare(first, match.size(), match) == 0 &&
+            line.find_first_not_of(" \t", first + match.size()) ==
+                std::string::npos) {
+            out += defers + "\nreturn __istack;\n";
+        } else {
+            out += line + '\n';
+        }
+    }
+
+    return out;
+}
+
+void emit_foreign(traverser::EmbeddedFn fn, std::string &out) {
+    std::string defers{};
+    for (auto &[name, type] : fn.args.args) {
+        if (type.name == "stack" || type.is_stack) {
+            out += "ch_stack_node *" + name +
+                   "=ch_stk_pop(&__istack).value.stk;\n";
+            defers += "ch_stk_delete(&" + name + ");\n";
+        } else if (type.name == "int") {
+            out += "int " + name + "=ch_stk_pop(&__istack).value.i;\n";
+        } else if (type.name == "float") {
+            out += "float " + name + "=ch_stk_pop(&__istack).value.f;\n";
+        } else if (type.name == "char") {
+            out += "int " + name + "=ch_stk_pop(&__istack).value.i;\n";
+        } else if (type.name == "bool") {
+            out += "char " + name + "=ch_stk_pop(&__istack).value.b;\n";
+        } else if (type.name == "string") {
+            out += "ch_string " + name + "=ch_stk_pop(&__istack).value.s;\n";
+            defers += "ch_str_delete(&" + name + ");\n";
+        }
+    }
+    std::string body{process_returns(fn, defers)};
+    out += body;
+}
+
+void emit_native(traverser::NativeFn fn, std::string &out) {
     for (auto &ir : fn.body) {
         switch (ir.kind) {
         case ir::Instruction::PushInt:
@@ -99,17 +146,35 @@ std::string backend::c::make_c(Program prog) {
     std::string full{};
     full += "#include \"core.h\"\n";
     for (auto fn : prog) {
-        full += "ch_stack_node *" + mangle(fn.name) + "(ch_stack_node **);\n";
+        auto name = [&fn] {
+            if (auto native = std::get_if<traverser::NativeFn>(&fn)) {
+                return native->name;
+            } else if (auto foreign = std::get_if<traverser::EmbeddedFn>(&fn)) {
+                return foreign->name;
+            }
+        }();
+        full += "ch_stack_node *" + mangle(name) + "(ch_stack_node **);\n";
     }
     full += "\n";
     for (auto fn : prog) {
-        full += "ch_stack_node *" + mangle(fn.name) +
-                "(ch_stack_node **__ifull) {\n";
+        auto [name, args] = [&fn] {
+            if (auto native = std::get_if<traverser::NativeFn>(&fn)) {
+                return std::pair{native->name, native->args};
+            } else if (auto foreign = std::get_if<traverser::EmbeddedFn>(&fn)) {
+                return std::pair{foreign->name, foreign->args};
+            }
+        }();
+        full +=
+            "ch_stack_node *" + mangle(name) + "(ch_stack_node **__ifull) {\n";
         full += "ch_stack_node *__istack = ch_stk_args(__ifull, " +
-                std::to_string(fn.args.args.size()) + ", " +
-                std::to_string(fn.args.kind == parser::Argument::Ellipses) +
+                std::to_string(args.args.size()) + ", " +
+                std::to_string(args.kind == parser::Argument::Ellipses) +
                 ");\n";
-        emit_instrs(fn, full);
+        if (auto native = std::get_if<traverser::NativeFn>(&fn)) {
+            emit_native(*native, full);
+        } else if (auto foreign = std::get_if<traverser::EmbeddedFn>(&fn)) {
+            emit_foreign(*foreign, full);
+        }
         full += "}\n";
     }
     full += "\n\nint main(void) {\n";

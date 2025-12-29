@@ -71,7 +71,7 @@ class TypeChecker {
     void try_apply(std::vector<Type> &stack, Function sig, std::string caller,
                    std::string callee);
     bool unify(std::vector<Type> &prev, std::vector<Type> &current);
-    void verify(traverser::Function fn);
+    void verify(traverser::NativeFn fn);
 
   public:
     TypeChecker(std::vector<traverser::Function> fns,

@@ -28,16 +28,21 @@ std::vector<traverser::Function> builder::Builder::traverse() {
     for (auto &decl : decls) {
         if (auto fn = std::get_if<parser::FnDecl>(&decl)) {
             try {
-                auto ir = traverser::traverse(fn->body);
-                if (show_ir) {
-                    std::println("fn {}\n", fn->name);
-                    for (auto &i : ir) {
-                        std::println("  {}", i.show());
+                if (auto grid = std::get_if<parser::Grid>(&fn->body)) {
+                    auto ir = traverser::traverse(*grid);
+                    if (show_ir) {
+                        std::println("fn {}\n", fn->name);
+                        for (auto &i : ir) {
+                            std::println("  {}", i.show());
+                        }
+                        std::println("\n");
                     }
-                    std::println("\n");
+                    fns.emplace_back(
+                        traverser::NativeFn{fn->name, fn->args, fn->rets, ir});
+                } else if (auto ffi = std::get_if<std::string>(&fn->body)) {
+                    fns.emplace_back(traverser::EmbeddedFn{fn->name, fn->args,
+                                                           fn->rets, *ffi});
                 }
-                fns.emplace_back(
-                    traverser::Function{fn->name, fn->args, fn->rets, ir});
             } catch (traverser::TraverserError e) {
                 error(std::format("In {}, at ({}, {}): {}", fn->name, e.x, e.y,
                                   e.what));
@@ -66,10 +71,11 @@ std::string builder::Builder::generate() {
 }
 void builder::Builder::build(std::filesystem::path root, std::string out_file) {
     std::string out{generate()};
-    std::string cmd{std::format(
-        "gcc -ggdb -fsanitize=address,leak -x c - -x none {} "
-        "-I{} -o {} -lm",
-        (root / "libcore.a").string(), (root / "core").string(), out_file)};
+    std::string cmd{
+        std::format("gcc -ggdb -fsanitize=address,leak -x c - -x none {} "
+                    "-I{} -o {} -lm {}",
+                    (root / "libcore.a").string(), (root / "core").string(),
+                    out_file, custom_args)};
     if (show_command) {
         std::println("Command: {}", cmd);
     }
@@ -141,7 +147,7 @@ void builder::Builder::error(std::size_t start, std::size_t end,
         ++current_line;
     }
 
-    std::exit(1);    
+    std::exit(1);
 }
 
 builder::Builder &builder::Builder::ir() {
@@ -158,5 +164,9 @@ builder::Builder &builder::Builder::cmd() {
 }
 builder::Builder &builder::Builder::type() {
     show_typecheck = !show_typecheck;
+    return *this;
+}
+builder::Builder &builder::Builder::set_args(std::string const &args) {
+    custom_args = args;
     return *this;
 }

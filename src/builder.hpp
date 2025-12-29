@@ -8,6 +8,7 @@ namespace builder {
 class Builder {
     std::string input{};
     std::string filename{"<anonymous>"};
+    std::string custom_args{};
     bool show_ir{false};
     bool show_gen{false};
     bool show_command{false};
@@ -31,5 +32,6 @@ class Builder {
     Builder &gen();
     Builder &cmd();
     Builder &type();
+    Builder &set_args(std::string const &args);
 };
 } // namespace builder
