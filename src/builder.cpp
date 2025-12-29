@@ -37,11 +37,14 @@ std::vector<traverser::Function> builder::Builder::traverse() {
                     std::println("\n");
                 }
                 fns.emplace_back(
-                    traverser::Function{fn->name, fn->args, fn->rets, ir});
+                    traverser::NativeFn{fn->name, fn->args, fn->rets, ir});
             } catch (traverser::TraverserError e) {
                 error(std::format("In {}, at ({}, {}): {}", fn->name, e.x, e.y,
                                   e.what));
             }
+        } else if (auto fn = std::get_if<parser::FFIDecl>(&decl)) {
+            fns.emplace_back(
+                traverser::ForeignFn{fn->name, fn->args, fn->rets});
         }
     }
     if (show_ir) {
@@ -141,7 +144,7 @@ void builder::Builder::error(std::size_t start, std::size_t end,
         ++current_line;
     }
 
-    std::exit(1);    
+    std::exit(1);
 }
 
 builder::Builder &builder::Builder::ir() {

@@ -1,6 +1,7 @@
 #include "checks.hpp"
 #include "ir.hpp"
 #include "parser.hpp"
+#include "traverser.hpp"
 #include <algorithm>
 #include <cassert>
 #include <functional>
@@ -100,24 +101,39 @@ checks::Type decl2type(parser::TypeSig decl, std::string fname,
 }
 
 void checks::TypeChecker::collect_sigs() {
-    for (auto &decl : fns) {
+    for (auto &fdecl : fns) {
         Function func{};
-        func.args.reserve(decl.args.args.size());
-        std::unordered_map<std::string, int> generics{};
-        if (decl.args.kind == parser::Argument::Ellipses) {
-            func.is_ellipses = true;
+        std::string name{};
+        if (auto decl = std::get_if<traverser::NativeFn>(&fdecl)) {
+            name = decl->name;
+            func.args.reserve(decl->args.args.size());
+            std::unordered_map<std::string, int> generics{};
+            if (decl->args.kind == parser::Argument::Ellipses) {
+                func.is_ellipses = true;
+            }
+            for (auto &[name, type] : decl->args.args) {
+                func.args.emplace_back(decl2type(type, decl->name, generics));
+            }
+            if (decl->rets.rest) {
+                func.returns_many =
+                    decl2type(*decl->rets.rest, decl->name, generics);
+            }
+            func.rets.reserve(decl->rets.args.size());
+            for (auto &type : decl->rets.args) {
+                func.rets.emplace_back(decl2type(type, decl->name, generics));
+            }
+        } else if (auto decl = std::get_if<traverser::ForeignFn>(&fdecl)) {
+            name = decl->name;
+            func.args.reserve(decl->args.size());
+            std::unordered_map<std::string, int> generics{};
+            for (auto &[name, type] : decl->args) {
+                func.args.emplace_back(decl2type(type, decl->name, generics));
+            }
+            if (decl->rets)
+                func.rets.emplace_back(
+                    decl2type(*decl->rets, decl->name, generics));
         }
-        for (auto &[name, type] : decl.args.args) {
-            func.args.emplace_back(decl2type(type, decl.name, generics));
-        }
-        if (decl.rets.rest) {
-            func.returns_many = decl2type(*decl.rets.rest, decl.name, generics);
-        }
-        func.rets.reserve(decl.rets.args.size());
-        for (auto &type : decl.rets.args) {
-            func.rets.emplace_back(decl2type(type, decl.name, generics));
-        }
-        sigs.emplace(decl.name, funit(func));
+        sigs.emplace(name, funit(func));
         std::string args{};
         if (!func.args.empty()) {
             args += func.args.back().show();
@@ -138,7 +154,7 @@ void checks::TypeChecker::collect_sigs() {
         std::string retmany{
             func.returns_many ? ", ..." + func.returns_many->show() : ""};
         if (show_typechecks) {
-            std::println("fn {} :: ({}{}) -> ({}{})", decl.name, args, ellipses,
+            std::println("fn {} :: ({}{}) -> ({}{})", name, args, ellipses,
                          rets, retmany);
         }
     }
@@ -457,7 +473,7 @@ bool checks::TypeChecker::unify(std::vector<checks::Type> &prev,
     return true;
 }
 
-void checks::TypeChecker::verify(traverser::Function fn) {
+void checks::TypeChecker::verify(traverser::NativeFn fn) {
     auto expected = sigs.at(fn.name)();
     std::vector<Type> initial;
     if (expected.is_ellipses) {
@@ -608,7 +624,8 @@ void checks::TypeChecker::verify(traverser::Function fn) {
 void checks::TypeChecker::check() {
     collect_sigs();
     for (auto &fn : fns) {
-        verify(fn);
+        if (auto f = std::get_if<traverser::NativeFn>(&fn))
+            verify(*f);
     }
 }
 

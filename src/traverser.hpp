@@ -4,12 +4,18 @@
 #include "parser.hpp"
 
 namespace traverser {
-struct Function {
+struct NativeFn {
     std::string name;
     parser::Argument args;
     parser::Return rets;
     std::vector<ir::Instruction> body;
 };
+struct ForeignFn {
+    std::string name;
+    std::vector<std::pair<std::string, parser::TypeSig>> args;
+    std::optional<parser::TypeSig> rets;
+};
+using Function = std::variant<NativeFn, ForeignFn>;
 struct TraverserError : std::exception {
     int x;
     int y;

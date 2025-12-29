@@ -114,7 +114,13 @@ struct FnDecl {
     Grid body;
 };
 
-using TopLevel = std::variant<FnDecl>;
+struct FFIDecl {
+    std::string name;
+    std::vector<std::pair<std::string, TypeSig>> args;
+    std::optional<TypeSig> rets;
+};
+
+using TopLevel = std::variant<FnDecl, FFIDecl>;
 
 class Parser {
     std::vector<Token> input;
@@ -134,6 +140,8 @@ class Parser {
     std::optional<TypeSig> parse_typesig();
 
     std::optional<FnDecl> parse_fndecl();
+
+    std::optional<FFIDecl> parse_ffi();
 
     std::optional<TopLevel> parse_top_level();
 
