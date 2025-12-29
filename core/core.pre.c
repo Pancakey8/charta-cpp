@@ -28,7 +28,7 @@ ch_string ch_str_alloc(size_t len) {
     return str;
 }
 
-void ch_str_append(ch_string *str, char c) {
+void ch_str_push(ch_string *str, char c) {
     if (str->len + 1 >= str->size) {
         str->size = 3 * str->size / 2 + 1;
         str->data = realloc(str->data, str->size);
@@ -38,6 +38,25 @@ void ch_str_append(ch_string *str, char c) {
     ++str->len;
 }
 
+void ch_str_append(ch_string *str, ch_string *other) {
+    if (other->len == 0) {
+        return;
+    }
+
+    size_t needed = str->len + other->len + 1;
+
+    if (needed > str->size) {
+        size_t new_size = needed * 2;
+        char *new_data = realloc(str->data, new_size);
+        str->data = new_data;
+        str->size = new_size;
+    }
+
+    memcpy(str->data + str->len, other->data, other->len);
+    str->len += other->len;
+    str->data[str->len] = '\0';
+}
+
 void ch_str_delete(ch_string *str) {
     free(str->data);
     str->data = NULL;
@@ -45,30 +64,113 @@ void ch_str_delete(ch_string *str) {
     str->size = 0;
 }
 
+void ch_str_replace(ch_string *str, size_t pos, size_t n,
+                    ch_string const *rep) {
+    if (pos > str->len)
+        pos = str->len;
+
+    if (pos + n > str->len)
+        n = str->len - pos;
+
+    size_t new_len = str->len - n + rep->len;
+
+    if (new_len > str->size) {
+        str->size = new_len + 1;
+        str->data = realloc(str->data, str->size);
+    }
+
+    if (rep->len != n) {
+        memmove(str->data + pos + rep->len, str->data + pos + n,
+                str->len - (pos + n));
+    }
+
+    memcpy(str->data + pos, rep->data, rep->len);
+
+    str->len = new_len;
+    str->data[str->len] = '\0';
+}
+
 ch_string encode_utf8(int c) {
     if (c <= 0x7F) {
         ch_string out = ch_str_alloc(1);
-        ch_str_append(&out, c);
+        ch_str_push(&out, c);
         return out;
     } else if (c <= 0x7FF) {
         ch_string out = ch_str_alloc(1);
-        ch_str_append(&out, (char)(0xC0 | (c >> 6)));
-        ch_str_append(&out, (char)(0x80 | (c & 0x3F)));
+        ch_str_push(&out, (char)(0xC0 | (c >> 6)));
+        ch_str_push(&out, (char)(0x80 | (c & 0x3F)));
         return out;
     } else if (c <= 0xFFFF) {
         ch_string out = ch_str_alloc(1);
-        ch_str_append(&out, (char)(0xE0 | (c >> 12)));
-        ch_str_append(&out, (char)(0x80 | ((c >> 6) & 0x3F)));
-        ch_str_append(&out, (char)(0x80 | (c & 0x3F)));
+        ch_str_push(&out, (char)(0xE0 | (c >> 12)));
+        ch_str_push(&out, (char)(0x80 | ((c >> 6) & 0x3F)));
+        ch_str_push(&out, (char)(0x80 | (c & 0x3F)));
         return out;
     } else {
         ch_string out = ch_str_alloc(1);
-        ch_str_append(&out, (char)(0xF0 | (c >> 18)));
-        ch_str_append(&out, (char)(0x80 | ((c >> 12) & 0x3F)));
-        ch_str_append(&out, (char)(0x80 | ((c >> 6) & 0x3F)));
-        ch_str_append(&out, (char)(0x80 | (c & 0x3F)));
+        ch_str_push(&out, (char)(0xF0 | (c >> 18)));
+        ch_str_push(&out, (char)(0x80 | ((c >> 12) & 0x3F)));
+        ch_str_push(&out, (char)(0x80 | ((c >> 6) & 0x3F)));
+        ch_str_push(&out, (char)(0x80 | (c & 0x3F)));
         return out;
     }
+}
+
+int decode_utf(ch_string const *str, size_t pos, size_t *bytes) {
+    *bytes = 0;
+    if (pos >= str->len)
+        return 0;
+    unsigned char c = str->data[pos];
+
+    if (c < 0x80) {
+        *bytes = 1;
+        return c;
+    } else if ((c >> 5) == 0b110 && pos + 1 < str->len) {
+        *bytes = 2;
+        return ((c & 31) << 6) | (str->data[pos + 1] & 63);
+    } else if ((c >> 4) == 0b1110 && pos + 2 < str->len) {
+        *bytes = 3;
+        return ((c & 15) << 12) | ((str->data[pos + 1] & 63) << 6) |
+               (str->data[pos + 2] & 63);
+    } else if ((c >> 3) == 0b11110 && pos + 3 < str->len) {
+        *bytes = 4;
+        return ((c & 7) << 18) | ((str->data[pos + 1] & 63) << 12) |
+               ((str->data[pos + 2] & 63) << 6) | (str->data[pos + 3] & 63);
+    }
+
+    *bytes = 0;
+    return 0;
+}
+
+ssize_t utf8_nth_index(ch_string const *str, size_t n) {
+    size_t pos = 0;
+    size_t i = 0;
+    size_t bytes;
+
+    while (pos < str->len) {
+        decode_utf(str, pos, &bytes);
+        if (bytes == 0)
+            return -1;
+
+        if (i == n)
+            return pos;
+
+        pos += bytes;
+        i++;
+    }
+
+    return -1;
+}
+
+ssize_t utf8_nth_char(ch_string const *str, size_t n) {
+    size_t index = utf8_nth_index(str, n);
+    if (index < 0)
+        return -1;
+    size_t bytes;
+    int ch = decode_utf(str, index, &bytes);
+    if (bytes == 0)
+        return -1;
+    return ch;
 }
 
 ch_value ch_valof_int(int n) {
@@ -242,39 +344,88 @@ void ch_stk_delete(ch_stack_node **stk) {
     *stk = NULL;
 }
 
-void print_value(ch_value v) {
+ch_string ch_str_from_int(int v) {
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%d", v);
+    return ch_str_new(buf);
+}
+
+ch_string ch_str_from_float(double v) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%f", v);
+    return ch_str_new(buf);
+}
+
+ch_string print_value_str(ch_value v) {
+    ch_string out = ch_str_new("");
+
     switch (v.kind) {
-    case CH_VALK_INT:
-        printf("%d", v.value.i);
-        break;
-    case CH_VALK_FLOAT:
-        printf("%f", v.value.f);
-        break;
-    case CH_VALK_BOOL:
-        printf("%s", v.value.b ? "⊤" : "⊥");
-        break;
-    case CH_VALK_CHAR: {
-        ch_string s = encode_utf8(v.value.i);
-        printf("'%s'", s.data);
+
+    case CH_VALK_INT: {
+        ch_string s = ch_str_from_int(v.value.i);
+        ch_str_append(&out, &s);
         ch_str_delete(&s);
         break;
     }
-    case CH_VALK_STRING:
-        printf("%s", v.value.s.data);
+
+    case CH_VALK_FLOAT: {
+        ch_string s = ch_str_from_float(v.value.f);
+        ch_str_append(&out, &s);
+        ch_str_delete(&s);
         break;
+    }
+
+    case CH_VALK_BOOL: {
+        ch_string s = ch_str_new(v.value.b ? "⊤" : "⊥");
+        ch_str_append(&out, &s);
+        ch_str_delete(&s);
+        break;
+    }
+
+    case CH_VALK_CHAR: {
+        ch_string s = encode_utf8(v.value.i);
+        ch_str_push(&out, '\'');
+        ch_str_append(&out, &s);
+        ch_str_push(&out, '\'');
+        ch_str_delete(&s);
+        break;
+    }
+
+    case CH_VALK_STRING:
+        ch_str_append(&out, &v.value.s);
+        break;
+
     case CH_VALK_STACK: {
         ch_stack_node *n = v.value.stk;
-        printf("[");
+
+        ch_str_push(&out, '[');
+
         while (n) {
-            print_value(n->val);
+            ch_string elem = print_value_str(n->val);
+            ch_str_append(&out, &elem);
+            ch_str_delete(&elem);
+
             if (n->next) {
-                printf(", ");
+                ch_string comma = ch_str_new(", ");
+                ch_str_append(&out, &comma);
+                ch_str_delete(&comma);
             }
+
             n = n->next;
         }
-        printf("]");
+
+        ch_str_push(&out, ']');
+        break;
     }
     }
+
+    return out;
+}
+
+void print_value(ch_value v) {
+    ch_string s = print_value_str(v);
+    printf("%s", s.data);
+    ch_str_delete(&s);
 }
 
 void println_value(ch_value v) {
@@ -903,11 +1054,103 @@ ch_stack_node *_mangle_(rev, "rev")(ch_stack_node **full) {
     ch_stack_node *prev = NULL;
     ch_stack_node *stk = local->val.value.stk;
     while (stk) {
-      ch_stack_node *next = stk->next;
-      stk->next = prev;
-      prev = stk;
-      stk = next;
+        ch_stack_node *next = stk->next;
+        stk->next = prev;
+        prev = stk;
+        stk = next;
     }
     local->val.value.stk = prev;
+    return local;
+}
+
+ch_stack_node *_mangle_(str, "str")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 1, 0);
+    ch_value val = ch_stk_pop(&local);
+    ch_string str = print_value_str(val);
+    ch_val_delete(&val);
+    ch_stk_push(&local, ch_valof_string(str));
+    return local;
+}
+
+ch_stack_node *_mangle_(slen, "slen")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 1, 0);
+    if (local->val.kind != CH_VALK_STRING) {
+        printf("ERR: 'slen' expected string, got %s",
+               ch_valk_name(local->val.kind));
+        exit(1);
+    }
+    ch_stk_push(&local, ch_valof_int(local->val.value.s.len));
+    return local;
+}
+
+ch_stack_node *_mangle_(strget, "@")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 2, 0);
+    ch_value index = ch_stk_pop(&local);
+    if (local->val.kind != CH_VALK_STRING || index.kind != CH_VALK_INT) {
+        printf("ERR: '@' expected int and string, got %s and %s",
+               ch_valk_name(index.kind), ch_valk_name(local->val.kind));
+        exit(1);
+    }
+    size_t bytes;
+    int code = utf8_nth_char(&local->val.value.s, index.value.i);
+    if (bytes < 0) {
+        printf("ERR: '@' failed to read char, possible out of bound access.");
+        exit(1);
+    }
+    ch_stk_push(&local, ch_valof_char(code));
+    return local;
+}
+
+ch_stack_node *_mangle_(strset, "@!")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 3, 0);
+    ch_value index = ch_stk_pop(&local);
+    ch_value ch = ch_stk_pop(&local);
+    ch_string *string = &local->val.value.s;
+    if (local->val.kind != CH_VALK_STRING || index.kind != CH_VALK_INT ||
+        ch.kind != CH_VALK_CHAR) {
+        printf("ERR: '@!' expected int,string,char; got %s,%s,%s",
+               ch_valk_name(index.kind), ch_valk_name(local->val.kind),
+               ch_valk_name(local->val.kind));
+        exit(1);
+    }
+    ssize_t byte_idx = utf8_nth_index(string, index.value.i);
+    if (byte_idx < 0) {
+        printf("ERR: '@!' failed to read char, possible out of bound access.");
+        exit(1);
+    }
+    ch_string s = encode_utf8(ch.value.i);
+    ch_str_replace(string, byte_idx, 1, &s);
+    ch_str_delete(&s);
+    return local;
+}
+
+ch_stack_node *_mangle_(strapp, "&")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 2, 0);
+    ch_value s2 = ch_stk_pop(&local);
+    ch_value s1 = ch_stk_pop(&local);
+    if (s1.kind != CH_VALK_STRING || s2.kind != CH_VALK_STRING) {
+        printf("ERR: '&' expected string and string, got %s and %s",
+               ch_valk_name(s1.kind), ch_valk_name(s2.kind));
+        exit(1);
+    }
+    ch_str_append(&s1.value.s, &s2.value.s);
+    ch_val_delete(&s2);
+    ch_stk_push(&local, s1);
+    return local;
+}
+
+ch_stack_node *_mangle_(strpush, ".")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 2, 0);
+    ch_value c = ch_stk_pop(&local);
+    ch_value s = ch_stk_pop(&local);
+    if (c.kind != CH_VALK_CHAR || s.kind != CH_VALK_STRING) {
+        printf("ERR: '&' expected char and string, got %s and %s",
+               ch_valk_name(c.kind), ch_valk_name(s.kind));
+        exit(1);
+    }
+    ch_string ap = encode_utf8(c.value.i);
+    ch_str_append(&s.value.s, &ap);
+    ch_str_delete(&ap);
+    ch_stk_push(&local, s);
     return local;
 }

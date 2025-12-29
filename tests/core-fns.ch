@@ -106,6 +106,19 @@ fn test-type-info () -> (int) {
                      1           2                         3
 }
 
+fn test-str-ops () -> (int) {
+→ 13 str "13" ≠ ? "Süper" 2 @ 'p' ≠ ? "Hello" '←' 3 @! "Hel←o" ≠ ? "Hey" ℓ 3 = ? 4
+                ↓                   ↓                            ↓             ↓
+                1                   2                            3            "Yo"
+                                    ←                            ←            '◡'
+                                                                               .
+                                                                              "Yo◡"
+                                                                               =
+                                       0 ? ≠ "Hello world" & "world" "Hello " ←?
+                                         ↓                                     5
+                                         6
+}
+
 fn main () -> () {
 →     "< > ≤ ≥" test-comparisons test ↓
 ↓              test test-equals "= ≠" ←
@@ -114,5 +127,6 @@ fn main () -> () {
 →        "ord chr" test-char-ops test ↓
 ↓          test test-bool-ops "∧ ∨ ¬" ←
 →          "type" test-type-info test ↓
-  test test-more-stk-ops "⧺ ⇆ ↙ ↘ ++" ←
+↓ test test-more-stk-ops "⧺ ⇆ ↙ ↘ ++" ←
+→ "str ℓ @ @! . &" test-str-ops test
 }

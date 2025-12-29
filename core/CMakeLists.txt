@@ -22,6 +22,7 @@ add_library(core
         ${CMAKE_CURRENT_BINARY_DIR}/core.c
         ${CMAKE_CURRENT_BINARY_DIR}/core.h
 )
+target_compile_options(core PRIVATE -ggdb)
 target_compile_definitions(core PRIVATE PRE=1)
 set_target_properties(core PROPERTIES
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"

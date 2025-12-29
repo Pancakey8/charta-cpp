@@ -22,7 +22,10 @@ ch_string ch_str_new(char const *data);
 
 ch_string ch_str_alloc(size_t len);
 
-void ch_str_append(ch_string *str, char c);
+void ch_str_push(ch_string *str, char c);
+
+void ch_str_append(ch_string *str, ch_string *other);
+void ch_str_replace(ch_string *str, size_t pos, size_t n, ch_string const *rep);
 
 void ch_str_delete(ch_string *str);
 
@@ -199,5 +202,14 @@ ch_stack_node *_mangle_(rev, "rev")(ch_stack_node **full);
 static inline ch_stack_node *_mangle_(rev2, "⇆")(ch_stack_node **full) {
     return _mangle_(rev, "rev")(full);
 }
+
+ch_stack_node *_mangle_(str, "str")(ch_stack_node **full);
+ch_stack_node *_mangle_(slen, "slen")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(slen2, "ℓ")(ch_stack_node **full) {
+    return _mangle_(slen, "slen")(full);
+}
+ch_stack_node *_mangle_(strget, "@")(ch_stack_node **full);
+ch_stack_node *_mangle_(strset, "@!")(ch_stack_node **full);
+ch_stack_node *_mangle_(strapp, "&")(ch_stack_node **full);
+ch_stack_node *_mangle_(strpush, ".")(ch_stack_node **full);
 // panic
-// stringify, strlen, strget, strset, strappend, strpush

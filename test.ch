@@ -1,8 +1,4 @@
-fn fun () -> () cffi {
-   @main@(NULL);
-}
-
 fn main () -> () {
-→ "Hello" print fun
+→ 13.5 print
 }
 

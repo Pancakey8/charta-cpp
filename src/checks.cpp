@@ -301,7 +301,7 @@ bool any_unresolved(std::vector<checks::Type> const &types,
                 our_generics.end()) {
                 return true;
             }
-            break;            
+            break;
         }
         case checks::Type::Stack: {
             auto &stk = std::get<checks::StackType>(type.val);
@@ -312,7 +312,7 @@ bool any_unresolved(std::vector<checks::Type> const &types,
                 auto t = std::get<std::shared_ptr<checks::Type>>(stk.val);
                 return any_unresolved({*t}, our_generics);
             }
-            break;            
+            break;
         }
         default:
             break;
@@ -766,6 +766,10 @@ checks::Function print_sig() {
     checks::Type a = generic();
     return {{a}, {}};
 }
+checks::Function strconv_sig() {
+    checks::Type a = generic();
+    return {{a}, {tstring}};
+}
 
 static const std::unordered_map<std::string, std::function<checks::Function()>>
     internal_sigs{
@@ -833,7 +837,14 @@ static const std::unordered_map<std::string, std::function<checks::Function()>>
         {"↘", funit({{tint, tstack_any}, {tstack_any}})},
         {"rev", funit({{tstack_any}, {tstack_any}})},
         {"⇆", funit({{tstack_any}, {tstack_any}})},
-        {"print", print_sig}};
+        {"print", print_sig},
+        {"str", strconv_sig},
+        {"slen", funit({{tstring}, {tint, tstring}})},
+        {"ℓ", funit({{tstring}, {tint, tstring}})},
+        {"@", funit({{tint, tstring}, {tchar, tstring}})},
+        {"@!", funit({{tint, tchar, tstring}, {tstring}})},
+        {"&", funit({{tstring, tstring}, {tstring}})},
+        {".", funit({{tchar, tstring}, {tstring}})}};
 
 checks::TypeChecker::TypeChecker(std::vector<traverser::Function> fns,
                                  bool show_typechecks)
