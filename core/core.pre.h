@@ -88,6 +88,10 @@ ch_stack_node *_mangle_(swp, "swp")(ch_stack_node **full);
 static inline ch_stack_node *_mangle_(swp2, "↕")(ch_stack_node **full) {
     return _mangle_(swp, "swp")(full);
 }
+ch_stack_node *_mangle_(over, "ovr")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(over2, "⊼")(ch_stack_node **full) {
+    return _mangle_(over, "ovr")(full);
+}
 ch_stack_node *_mangle_(rot, "rot")(ch_stack_node **full);
 static inline ch_stack_node *_mangle_(rot2, "↻")(ch_stack_node **full) {
     return _mangle_(rot, "rot")(full);

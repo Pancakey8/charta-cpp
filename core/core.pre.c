@@ -459,6 +459,17 @@ ch_stack_node *_mangle_(swp, "swp")(ch_stack_node **full) {
     return local;
 }
 
+ch_stack_node *_mangle_(over, "ovr")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 2, 0);
+    ch_value a = ch_stk_pop(&local);
+    ch_value b = ch_stk_pop(&local);
+    ch_value b2 = ch_valcpy(&b);
+    ch_stk_push(&local, b);
+    ch_stk_push(&local, a);
+    ch_stk_push(&local, b2);
+    return local;
+}    
+
 ch_stack_node *_mangle_(dbg, "dbg")(ch_stack_node **full) {
     ch_stack_node *elem = *full;
     size_t i = 0;

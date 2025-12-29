@@ -32,9 +32,9 @@ fn test-comparisons () -> (int) {
 }
 
 fn test-align-ops () -> (int) {
-→ 1 2 3 4 5 ⇈ 5 ≠ ? 5 ≠ ? ↻ 2 ≠ ? ↷ 3 ≠ ? ↕ ⇈ 4 ≠ ? ◌ 1 ≠ ? 1 2 3 4 ≡ 4 ≠ ? 0
-                  ↓     ↓       ↓       ↓         ↓       ↓               ↓
-                  1     2       3       4         5       6               7
+→ 1 2 3 4 5 ⇈ 5 ≠ ? 5 ≠ ? ↻ 2 ≠ ? ↷ 3 ≠ ? ↕ ⇈ 4 ≠ ? ◌ 1 ≠ ? 1 2 3 4 ≡ 4 ≠ ? ⊼ 3 ≠ ? 0
+                  ↓     ↓       ↓       ↓         ↓       ↓               ↓       ↓
+                  1     2       3       4         5       6               7       8
 }
 
 fn expected-stk () -> (... int) {
@@ -122,7 +122,7 @@ fn test-str-ops () -> (int) {
 fn main () -> () {
 →     "< > ≤ ≥" test-comparisons test ↓
 ↓              test test-equals "= ≠" ←
-→   "≡ ⇈ ↕ ↻ ↷ ◌" test-align-ops test ↓
+→ "≡ ⇈ ↕ ↻ ↷ ◌ ⊼" test-align-ops test ↓
 ↓   test test-stk-ops "⊢ ⊢! ⊣ ⊣! ⤓ ▭" ←
 →        "ord chr" test-char-ops test ↓
 ↓          test test-bool-ops "∧ ∨ ¬" ←

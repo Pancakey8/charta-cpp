@@ -717,6 +717,12 @@ checks::Function swp_sig() {
     return {{a, b}, {b, a}};
 }
 
+checks::Function ovr_sig() {
+    auto a = generic();
+    auto b = generic();
+    return {{a, b}, {b, a, b}};
+}
+
 checks::Function rot_sig() {
     auto a = generic();
     auto b = generic();
@@ -786,6 +792,8 @@ static const std::unordered_map<std::string, std::function<checks::Function()>>
         {"≥", cmp_sig},
         {"swp", swp_sig},
         {"↕", swp_sig},
+        {"ovr", ovr_sig},
+        {"⊼", ovr_sig},
         {"rot", rot_sig},
         {"↻", rot_sig},
         {"rot-", rot_rev_sig},
