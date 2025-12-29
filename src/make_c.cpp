@@ -4,6 +4,7 @@
 #include "parser.hpp"
 #include "traverser.hpp"
 #include <cassert>
+#include <print>
 #include <sstream>
 
 std::string intercalate(std::vector<std::string> list, std::string delim) {
@@ -56,6 +57,30 @@ std::string process_returns(traverser::EmbeddedFn const &fn,
     return out;
 }
 
+std::string process_mangling(std::string const &body) {
+    std::string mangled = body;
+
+    std::size_t pos = 0;
+    while (true) {
+        std::size_t open = mangled.find('@', pos);
+        if (open == std::string::npos)
+            break;
+
+        std::size_t close = mangled.find('@', open + 1);
+        if (close == std::string::npos)
+            break;
+
+        std::string name = mangled.substr(open + 1, close - open - 1);
+        std::string replacement = mangle(name);
+
+        mangled.replace(open, close - open + 1, replacement);
+
+        pos = open + replacement.size();
+    }
+
+    return mangled;
+}
+
 void emit_foreign(traverser::EmbeddedFn fn, std::string &out) {
     std::string defers{};
     for (auto &[name, type] : fn.args.args) {
@@ -76,7 +101,7 @@ void emit_foreign(traverser::EmbeddedFn fn, std::string &out) {
             defers += "ch_str_delete(&" + name + ");\n";
         }
     }
-    std::string body{process_returns(fn, defers)};
+    std::string body{process_mangling(process_returns(fn, defers))};
     out += body;
 }
 

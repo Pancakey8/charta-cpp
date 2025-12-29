@@ -79,9 +79,11 @@ void builder::Builder::build(std::filesystem::path root, std::string out_file) {
     if (show_command) {
         std::println("Command: {}", cmd);
     }
-    FILE *gcc = popen(cmd.data(), "w");
-    fputs(out.data(), gcc);
-    pclose(gcc);
+    if (!is_dry_run) {
+        FILE *gcc = popen(cmd.data(), "w");
+        fputs(out.data(), gcc);
+        pclose(gcc);
+    }
 }
 
 void builder::Builder::error(std::string what) {
@@ -168,5 +170,9 @@ builder::Builder &builder::Builder::type() {
 }
 builder::Builder &builder::Builder::set_args(std::string const &args) {
     custom_args = args;
+    return *this;
+}
+builder::Builder &builder::Builder::dry() {
+    is_dry_run = !is_dry_run;
     return *this;
 }
