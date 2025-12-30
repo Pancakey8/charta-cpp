@@ -9,7 +9,8 @@ typedef enum {
     CH_VALK_BOOL,
     CH_VALK_CHAR,
     CH_VALK_STRING,
-    CH_VALK_STACK
+    CH_VALK_STACK,
+    CH_VALK_OPAQUE
 } ch_value_kind;
 
 typedef struct {
@@ -39,6 +40,7 @@ typedef struct {
         char b;
         ch_string s;
         struct ch_stack_node *stk;
+        void *op;
     } value;
 } ch_value;
 
@@ -54,6 +56,8 @@ ch_value ch_valof_string(ch_string n);
 ch_value ch_valof_bool(char n);
 
 ch_value ch_valof_stack(struct ch_stack_node *n);
+
+ch_value ch_valof_opaque(void *ptr);
 
 char ch_valas_bool(ch_value v);
 

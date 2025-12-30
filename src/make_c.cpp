@@ -100,7 +100,9 @@ void emit_foreign(traverser::EmbeddedFn fn, std::string &out) {
         } else if (type.name == "string") {
             out += "ch_string " + name + "=ch_stk_pop(&__istack).value.s;\n";
             defers += "ch_str_delete(&" + name + ");\n";
-        }
+        } else if (type.name == "opaque") {
+            out += "void *" + name + "=ch_stk_pop(&__istack).value.op;\n";
+        }            
     }
     std::string body{process_mangling(process_returns(fn, defers))};
     out += body;

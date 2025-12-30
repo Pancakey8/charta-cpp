@@ -198,6 +198,10 @@ ch_value ch_valof_stack(struct ch_stack_node *n) {
     return (ch_value){.kind = CH_VALK_STACK, .value.stk = n};
 }
 
+ch_value ch_valof_opaque(void *ptr) {
+    return (ch_value){.kind = CH_VALK_OPAQUE, .value.op = ptr};
+}    
+
 char *ch_valk_name(ch_value_kind k) {
     switch (k) {
     case CH_VALK_INT:
@@ -212,6 +216,8 @@ char *ch_valk_name(ch_value_kind k) {
         return "string";
     case CH_VALK_STACK:
         return "stack";
+    case CH_VALK_OPAQUE:
+        return "opaque";
     }
 }
 
@@ -259,6 +265,9 @@ ch_value ch_valcpy(ch_value const *v) {
         other.value.s = ch_str_new(v->value.s.data);
     } else if (v->kind == CH_VALK_STACK) {
         other.value.stk = ch_stk_copy(v->value.stk);
+    } else if (v->kind == CH_VALK_OPAQUE) {
+        printf("ERR: Tried to copy opaque value\n");
+        exit(1);
     } else {
         other.value = v->value;
     }
@@ -417,6 +426,10 @@ ch_string print_value_str(ch_value v) {
         ch_str_push(&out, ']');
         break;
     }
+
+    case CH_VALK_OPAQUE: {
+        ch_str_append(&out, "<opaque>");
+    }
     }
 
     return out;
@@ -468,7 +481,7 @@ ch_stack_node *_mangle_(over, "ovr")(ch_stack_node **full) {
     ch_stk_push(&local, a);
     ch_stk_push(&local, b2);
     return local;
-}    
+}
 
 ch_stack_node *_mangle_(dbg, "dbg")(ch_stack_node **full) {
     ch_stack_node *elem = *full;

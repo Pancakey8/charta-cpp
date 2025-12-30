@@ -57,6 +57,7 @@ static const checks::Type tfloat = checks::Type{checks::Type::Float, {}};
 static const checks::Type tstring = checks::Type{checks::Type::String, {}};
 static const checks::Type tchar = checks::Type{checks::Type::Char, {}};
 static const checks::Type tliquid = checks::Type{checks::Type::Liquid, {}};
+static const checks::Type topaque = checks::Type{checks::Type::Opaque, {}};
 
 static const checks::Type tstack_any = checks::Type{
     checks::Type::Stack, checks::StackType{checks::StackType::Unknown, {}}};
@@ -85,6 +86,8 @@ checks::Type decl2type(parser::TypeSig decl, std::string fname,
         return {checks::Type::String, {}};
     } else if (decl.name == "stack") {
         return tstack_any;
+    } else if (decl.name == "opaque") {
+        return topaque;
     } else {
         if (decl.name.starts_with("#")) {
             if (generics.contains(decl.name)) {
@@ -664,6 +667,8 @@ std::string checks::Type::show() const {
         return "char";
     case String:
         return "string";
+    case Opaque:
+         return "opaque";
     case Stack: {
         return std::get<StackType>(val).show();
     }
@@ -870,6 +875,7 @@ bool checks::Type::operator==(Type const &other) const {
     case Char:
     case String:
     case Liquid:
+    case Opaque:
         return true;
     case Union: {
         auto const &a = std::get<std::vector<Type>>(val);

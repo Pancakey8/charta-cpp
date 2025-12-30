@@ -34,7 +34,8 @@ struct Type {
         Stack,
         Generic,
         Liquid,
-        Many
+        Many,
+        Opaque        
     } kind;
     std::variant<std::string, StackType, std::vector<Type>,
                  std::shared_ptr<Type>, int>
