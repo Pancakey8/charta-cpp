@@ -766,7 +766,7 @@ checks::Function bbool_sig() { return {{tbool, tbool}, {tbool}}; }
 checks::Function typeid_sig() { return {{}, {tint}}; }
 checks::Function typeof_sig() {
     checks::Type a = generic();
-    return {{a}, {tint, a}};
+    return {{a}, {tint, tliquid}};
 }
 checks::Function print_sig() {
     checks::Type a = generic();

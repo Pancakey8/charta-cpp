@@ -2,7 +2,7 @@
 
 A 2D concatenative programming language.
 
-```rs
+``` rust
 fn fibo (n : int) -> (int) {
 → 0 1 ↻ 1 - ⇈ 0 > ? ◌
                   ↓
@@ -33,6 +33,8 @@ direction conditionally with `?`. If the previous expression evaluated to
 specified perpendicular direction. Using just `?` and directional arrows, you
 can express control flow like loops and conditionals. Since control flow is
 *only* written explicitly with arrows, code reads like a flow chart.
+
+Want to learn more? Check the [docs](docs/10-Start.md)
 
 ## Building the project
 
