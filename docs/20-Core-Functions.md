@@ -137,7 +137,7 @@ not implemented as a core function.
 
 ## I/O
 
-**TODO:** This section is lacking, but C FFI should cover the missing pieces.
+**TODO:** This section is lacking, but [C FFI](./30-C-FFI.md) should cover the missing pieces.
 
 | Name    | ASCII | Description                                        |
 |:-------:|:-----:|:---------------------------------------------------|

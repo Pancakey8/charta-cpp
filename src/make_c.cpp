@@ -62,24 +62,25 @@ std::string process_mangling(std::string const &body) {
 
     std::size_t pos = 0;
     while (true) {
-        std::size_t open = mangled.find('@', pos);
+        std::size_t open = mangled.find("@(", pos);
         if (open == std::string::npos)
             break;
 
-        std::size_t close = mangled.find('@', open + 1);
+        std::size_t close = mangled.find(")@", open + 2);
         if (close == std::string::npos)
             break;
 
-        std::string name = mangled.substr(open + 1, close - open - 1);
+        std::string name = mangled.substr(open + 2, close - (open + 2));
         std::string replacement = mangle(name);
 
-        mangled.replace(open, close - open + 1, replacement);
+        mangled.replace(open, (close + 2) - open, replacement);
 
         pos = open + replacement.size();
     }
 
     return mangled;
 }
+
 
 void emit_foreign(traverser::EmbeddedFn fn, std::string &out) {
     std::string defers{};

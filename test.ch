@@ -1,3 +1,11 @@
+fn call-dup (n : int) -> (int int) cffi {
+    ch_stack_node *stack = ch_stk_new();
+    ch_stk_push(&stack, ch_valof_int(n));
+    ch_stack_node *result = @(⇈)@(&stack);
+    ch_stk_append(&__istack, result);
+    @return@
+}
+
 fn main () -> () {
-→ 1 2 3 4 5 6 ▭ 3 ↙ ++ print
+→ 10 call-dup dbg
 }
