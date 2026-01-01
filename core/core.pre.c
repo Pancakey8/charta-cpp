@@ -494,6 +494,13 @@ ch_stack_node *_mangle_(over, "ovr")(ch_stack_node **full) {
     return local;
 }
 
+ch_stack_node *_mangle_(pick, "pck")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 3, 0);
+    ch_value val = ch_valcpy(local->next->next);
+    ch_stk_push(&local, val);
+    return local;    
+}    
+
 ch_stack_node *_mangle_(dbg, "dbg")(ch_stack_node **full) {
     ch_stack_node *elem = *full;
     size_t i = 0;

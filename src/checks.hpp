@@ -40,7 +40,8 @@ struct Type {
         Function
     } kind;
     std::variant<std::string, StackType, std::vector<Type>,
-                 std::shared_ptr<Type>, int, std::vector<ir::Instruction>>
+                 std::shared_ptr<Type>, int,
+                 std::optional<std::vector<ir::Instruction>>>
         val;
 
     std::string show() const;

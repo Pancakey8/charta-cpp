@@ -11,6 +11,7 @@ rudimentary manipulation and inspection of the stack.
 |:----:|:------:|:-----------------------------------------------------------|
 | `⇈`  | `dup`  | Duplicates top value                                       |
 | `⊼`  | `ovr`  | Duplicates second value to the top                         |
+| `⩞`  | `pck`  | Duplicates third value to the top                          |
 | `↕`  | `swp`  | Swaps the place of top two values                          |
 | `↻`  | `rot`  | Moves the third value to the top                           |
 | `↷`  | `rot-` | Moves the top value to the third position (inverse of `↻`) |

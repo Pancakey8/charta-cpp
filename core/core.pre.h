@@ -109,6 +109,10 @@ ch_stack_node *_mangle_(rot_rev, "rot-")(ch_stack_node **full);
 static inline ch_stack_node *_mangle_(rot_rev2, "↷")(ch_stack_node **full) {
     return _mangle_(rot_rev, "rot-")(full);
 }
+ch_stack_node *_mangle_(pick, "pck")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(pick2, "⩞")(ch_stack_node **full) {
+    return _mangle_(pick, "pck")(full);
+}
 
 ch_stack_node *_mangle_(dbg, "dbg")(ch_stack_node **full);
 

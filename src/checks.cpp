@@ -47,7 +47,7 @@ checks::Type tstack_many(checks::Type const t) {
                                           std::make_shared<checks::Type>(t)}};
 }
 
-checks::Type tfunction(std::vector<ir::Instruction> is) {
+checks::Type tfunction(std::optional<std::vector<ir::Instruction>> is) {
     return checks::Type{checks::Type::Function, std::move(is)};
 }
 
@@ -93,7 +93,7 @@ checks::Type decl2type(parser::TypeSig decl, std::string fname,
     } else if (decl.name == "opaque") {
         return topaque;
     } else if (decl.name == "function") {
-        return tfunction({});
+        return tfunction(std::nullopt);
     } else {
         if (decl.name.starts_with("#")) {
             if (generics.contains(decl.name)) {
@@ -777,6 +777,13 @@ checks::Function rot_rev_sig() {
     return {{a, b, c}, {b, c, a}};
 }
 
+checks::Function pck_sig() {
+    auto a = generic();
+    auto b = generic();
+    auto c = generic();
+    return {{a, b, c}, {c, a, b, c}};
+}
+
 checks::Function eq_sig() {
     auto a = generic();
     auto b = generic();
@@ -827,17 +834,17 @@ std::optional<std::vector<ir::Instruction>> get_irs(checks::Type const &type) {
     case checks::Type::Generic:
     case checks::Type::Liquid:
     case checks::Type::Stack:
-        return {};
+        return std::nullopt;
     case checks::Type::Union:
         for (auto &t : std::get<std::vector<checks::Type>>(type.val)) {
             if (auto irs = get_irs(t); irs)
                 return irs;
         }
-        return {};
+        return std::nullopt;
     case checks::Type::Many:
         return get_irs(*std::get<std::shared_ptr<checks::Type>>(type.val));
     case checks::Type::Function:
-        return std::get<std::vector<ir::Instruction>>(type.val);
+        return std::get<std::optional<std::vector<ir::Instruction>>>(type.val);
     }
 }
 checks::Function apply_sig() {
@@ -845,19 +852,20 @@ checks::Function apply_sig() {
         effect;
     effect = [](checks::TypeChecker &checker,
                 std::vector<checks::Type> &stack) {
-        if (stack.empty() || !is_matching(stack.back(), tfunction({}))) {
+        if (stack.empty() ||
+            !is_matching(stack.back(), tfunction(std::nullopt))) {
             throw std::format(
                 "'▷' expected 'function', got {}",
                 stack.empty() ? "nothing" : ("'" + stack.back().show() + "'"));
         }
         auto fn = get_irs(stack.back());
+        stack.pop_back();
         if (!fn) { // Info loss -- lame
             stack.emplace_back(checks::Type{
                 checks::Type::Many, std::make_shared<checks::Type>(tliquid)});
             return;
         }
-        stack.pop_back();
-        auto stks = checker.run_stack(stack, "⧁", std::move(*fn));
+        auto stks = checker.run_stack(stack, "▷", std::move(*fn));
         std::vector<checks::Type> sum{};
         if (!stks.empty()) {
             sum = stks.front();
@@ -896,6 +904,8 @@ static const std::unordered_map<std::string, std::function<checks::Function()>>
         {"↻", rot_sig},
         {"rot-", rot_rev_sig},
         {"↷", rot_rev_sig},
+        {"⩞", pck_sig},
+        {"pck", pck_sig},
         {"dbg", funit({{}, {}})},
         {"+", arithm_sig},
         {"-", arithm_sig},

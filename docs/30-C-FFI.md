@@ -45,6 +45,7 @@ Parameter types are converted to C types as below:
 | `bool`         | `char` but only `1` or `0`                                               |
 | `string`       | `struct ch_string { char *data; size_t len; size_t size; }`              |
 | `stack`        | Pointer to `struct ch_stack_node { ch_value val; ch_stack_node *next; }` |
+| `function`     | `struct ch_stack_node * (*)(struct ch_stack_node **)`                    |
 | Type variables | Not supported explicitly                                                 |
 
 **NOTE:** Since some values such as `ch_string` and `ch_stack_node*` are

@@ -97,6 +97,8 @@ void emit_foreign(traverser::EmbeddedFn fn, std::string &out) {
             out += "int " + name + "=ch_stk_pop(&__istack).value.i;\n";
         } else if (type.name == "bool") {
             out += "char " + name + "=ch_stk_pop(&__istack).value.b;\n";
+        } else if (type.name == "function") {
+            out += "ch_stack_node *(*" + name + ")(ch_stack_node **) =ch_stk_pop(&__istack).value.fn;\n";
         } else if (type.name == "string") {
             out += "ch_string " + name + "=ch_stk_pop(&__istack).value.s;\n";
             defers += "ch_str_delete(&" + name + ");\n";

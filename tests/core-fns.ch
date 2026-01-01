@@ -130,6 +130,12 @@ fn test-apply () -> (int) {
                                    *
 }
 
+fn test-align-ops-2 () -> (int) {
+→ 1 2 3 4 ⩞ 2 = ? 1
+                ↓
+                0
+}
+
 fn main () -> () {
 →     "< > ≤ ≥" test-comparisons test ↓
 ↓              test test-equals "= ≠" ←
@@ -140,5 +146,6 @@ fn main () -> () {
 →          "type" test-type-info test ↓
 ↓ test test-more-stk-ops "⧺ ⇆ ↙ ↘ ++" ←
 → "str ℓ @ @! . &" test-str-ops test  ↓
-                  test test-apply "▷" ←
+↓                 test test-apply "▷" ←
+→ "⩞" test-align-ops-2 test
 }
