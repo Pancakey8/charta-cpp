@@ -1,3 +1,9 @@
+cimport "termios.h"
+cimport "unistd.h"
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "time.h"
+
 fn getchar () -> (int) cffi {
     char c = getchar();
     ch_stk_push(&__istack, ch_valof_int((int) c));
@@ -44,12 +50,12 @@ fn name (dir : int) -> (string) {
      "Up"  "Down"  "Left" "Right"
 }
 
-fn draw (tail : [int]) -> ([int]) cffi {
+fn draw (tail : [int] food_x : int food_y : int) -> ([int]) cffi {
    ch_stack_node *call = @(W)@(NULL);
    int W = ch_stk_pop(&call).value.i;
    call = @(H)@(NULL);
    int H = ch_stk_pop(&call).value.i;
-   puts("\033[2J");
+   puts("\033[2J\033[H");
    for (int i = 0; i < H; ++i) {
       for (int j = 0; j < W; ++j) {
          ch_stack_node *s = tail;
@@ -66,6 +72,8 @@ fn draw (tail : [int]) -> ([int]) cffi {
          }
          if (is_tail) {
             putc('@', stdout);
+         } else if (food_y == i && food_x == j) {
+           putc('#', stdout);
          } else {
             putc('.', stdout);
          }
@@ -111,13 +119,45 @@ fn ¿ded (tail : [int]) -> (bool [int]) {
     ↑                          ←
 }
 
-fn is-eat () -> (bool) {
-→ '⊤
+fn ¿eat (tail : [int]) -> (bool int int [int]) cffi {
+   ch_stack_node *call = @(W)@(NULL);
+   int W = ch_stk_pop(&call).value.i;
+   call = @(H)@(NULL);
+   int H = ch_stk_pop(&call).value.i;
+
+   static int food_x, food_y;
+   static char is_init = 0;
+   int head_x = tail->val.value.i;
+   int head_y = tail->next->val.value.i;
+   char is_eat = 0;
+   if (!is_init) {
+      printf("Here\n");
+      food_x = rand() % W;
+      food_y = rand() % H;
+      is_init = 1;
+   }
+   if (head_x == food_x && head_y == food_y) {
+      is_eat = 1;
+      is_init = 0;
+   }
+
+   ch_stk_push(&__istack, ch_valof_stack(tail));
+   tail = NULL;
+   ch_stk_push(&__istack, ch_valof_int(food_y));
+   ch_stk_push(&__istack, ch_valof_int(food_x));
+   ch_stk_push(&__istack, ch_valof_bool(is_eat));
+   @return@
 }
 
-fn eat (tail : [int]) -> ([int]) {
-→ is-eat ¬ ? TODO
-           ↓
+fn seed () -> () cffi {
+   srand(time(NULL));
+   @return@
+}
+
+fn eat (tail : [int]) -> ([int] int int) {
+→ ¿eat ¬ ? ↻ ⇆ 4 ↙ ⊩ ↕ ⊣ ↻ 2 * - ↕ ⊢ ↕ ⫣ ↻ 2 * - ↕ ↻ ⤓ ↕ ⤓ ↕ ++ ⇆
+         ↓
+         ↻
 }
 
 fn loop () -> () {
@@ -139,5 +179,5 @@ fn loop () -> () {
 }
 
 fn main () -> () {
-→ unbuffer loop buffer
+→ seed unbuffer loop buffer
 }

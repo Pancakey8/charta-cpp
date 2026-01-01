@@ -609,9 +609,34 @@ std::optional<parser::FnDecl> parser::Parser::parse_fndecl() {
         rets, grid};
 }
 
+std::optional<parser::CImport> parser::Parser::parse_c_import() {
+    size_t start, end;
+    if (auto p = peek(); !(p && p->kind == Token::Symbol &&
+                           std::get<std::string>(p->value) == "cimport")) {
+        return {};
+    } else {
+        start = p->start;
+        end = p->end;
+    }
+    ++cursor;
+    spaces();
+    if (auto p = peek(); p && p->kind == Token::String) {
+        ++cursor;
+        return CImport{std::get<std::string>(p->value)};
+    } else {
+        if (p)
+            end = p->end;
+        throw ParserError(start, end, "Expected string literal on import");
+    }
+}
+
 std::optional<parser::TopLevel> parser::Parser::parse_top_level() {
     spaces();
-    return parse_fndecl();
+    if (auto p = parse_fndecl(); p)
+        return p;
+    if (auto p = parse_c_import(); p)
+        return p;
+    return {};
 }
 
 std::vector<parser::TopLevel> parser::Parser::parse_program() {

@@ -81,7 +81,6 @@ std::string process_mangling(std::string const &body) {
     return mangled;
 }
 
-
 void emit_foreign(traverser::EmbeddedFn fn, std::string &out) {
     std::string defers{};
     for (auto &[name, type] : fn.args.args) {
@@ -102,7 +101,7 @@ void emit_foreign(traverser::EmbeddedFn fn, std::string &out) {
             defers += "ch_str_delete(&" + name + ");\n";
         } else if (type.name == "opaque") {
             out += "void *" + name + "=ch_stk_pop(&__istack).value.op;\n";
-        }            
+        }
     }
     std::string body{process_mangling(process_returns(fn, defers))};
     out += body;
@@ -170,9 +169,13 @@ void emit_native(traverser::NativeFn fn, std::string &out) {
     }
 }
 
-std::string backend::c::make_c(Program prog) {
+std::string backend::c::make_c(Program prog,
+                               std::vector<std::string> includes) {
     std::string full{};
     full += "#include \"core.h\"\n";
+    for (auto &inc : includes) {
+        full += "#include " + parser::quote_str(inc) + "\n";
+    }
     for (auto fn : prog) {
         auto name = [&fn] {
             if (auto native = std::get_if<traverser::NativeFn>(&fn)) {

@@ -47,6 +47,8 @@ std::vector<traverser::Function> builder::Builder::traverse() {
                 error(std::format("In {}, at ({}, {}): {}", fn->name, e.x, e.y,
                                   e.what));
             }
+        } else if (auto c_imp = std::get_if<parser::CImport>(&decl)) {
+            c_includes.emplace_back(c_imp->header);
         }
     }
     if (show_ir) {
@@ -61,7 +63,7 @@ std::vector<traverser::Function> builder::Builder::traverse() {
 }
 std::string builder::Builder::generate() {
     auto fns = traverse();
-    std::string code{backend::c::make_c(fns)};
+    std::string code{backend::c::make_c(fns, c_includes)};
     if (show_gen) {
         std::println("\n== Source ==");
         std::println("{}", code);

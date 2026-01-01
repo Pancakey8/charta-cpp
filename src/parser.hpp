@@ -116,7 +116,11 @@ struct FnDecl {
     std::variant<Grid, std::string> body;
 };
 
-using TopLevel = std::variant<FnDecl>;
+struct CImport {
+    std::string header;
+};
+
+using TopLevel = std::variant<FnDecl, CImport>;
 
 class Parser {
     std::vector<Token> input;
@@ -136,6 +140,8 @@ class Parser {
     std::optional<TypeSig> parse_typesig();
 
     std::optional<FnDecl> parse_fndecl();
+
+    std::optional<CImport> parse_c_import();
 
     std::optional<TopLevel> parse_top_level();
 

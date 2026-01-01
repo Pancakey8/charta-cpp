@@ -9,11 +9,12 @@ class Builder {
     std::string input{};
     std::string filename{"<anonymous>"};
     std::string custom_args{};
+    std::vector<std::string> c_includes{};
     bool show_ir{false};
     bool show_gen{false};
     bool show_command{false};
     bool show_typecheck{false};
-  bool is_dry_run{false};
+    bool is_dry_run{false};
 
     void error(std::size_t start, std::size_t end, std::string what);
     void error(std::string what);
