@@ -816,19 +816,48 @@ checks::Function strconv_sig() {
     checks::Type a = generic();
     return {{a}, {tstring}};
 }
+std::optional<std::vector<ir::Instruction>> get_irs(checks::Type const &type) {
+    switch (type.kind) {
+    case checks::Type::Int:
+    case checks::Type::Float:
+    case checks::Type::Bool:
+    case checks::Type::Char:
+    case checks::Type::String:
+    case checks::Type::Opaque:
+    case checks::Type::Generic:
+    case checks::Type::Liquid:
+    case checks::Type::Stack:
+        return {};
+    case checks::Type::Union:
+        for (auto &t : std::get<std::vector<checks::Type>>(type.val)) {
+            if (auto irs = get_irs(t); irs)
+                return irs;
+        }
+        return {};
+    case checks::Type::Many:
+        return get_irs(*std::get<std::shared_ptr<checks::Type>>(type.val));
+    case checks::Type::Function:
+        return std::get<std::vector<ir::Instruction>>(type.val);
+    }
+}
 checks::Function apply_sig() {
     std::function<void(checks::TypeChecker &, std::vector<checks::Type> &)>
         effect;
     effect = [](checks::TypeChecker &checker,
                 std::vector<checks::Type> &stack) {
-        if (stack.empty() || stack.back().kind != checks::Type::Function) {
+        if (stack.empty() || !is_matching(stack.back(), tfunction({}))) {
             throw std::format(
-                "'⧁' expected 'function', got {}",
+                "'▷' expected 'function', got {}",
                 stack.empty() ? "nothing" : ("'" + stack.back().show() + "'"));
         }
-        auto fn = std::get<std::vector<ir::Instruction>>(stack.back().val);
+        auto fn = get_irs(stack.back());
+        if (!fn) { // Info loss -- lame
+            stack.emplace_back(checks::Type{
+                checks::Type::Many, std::make_shared<checks::Type>(tliquid)});
+            return;
+        }
         stack.pop_back();
-        auto stks = checker.run_stack(stack, "⧁", std::move(fn));
+        auto stks = checker.run_stack(stack, "⧁", std::move(*fn));
         std::vector<checks::Type> sum{};
         if (!stks.empty()) {
             sum = stks.front();
@@ -922,7 +951,7 @@ static const std::unordered_map<std::string, std::function<checks::Function()>>
         {"@!", funit({{tint, tchar, tstring}, {tstring}})},
         {"&", funit({{tstring, tstring}, {tstring}})},
         {".", funit({{tchar, tstring}, {tstring}})},
-        {"⧁", apply_sig},
+        {"▷", apply_sig},
         {"ap", apply_sig}};
 
 checks::TypeChecker::TypeChecker(std::vector<traverser::Function> fns,

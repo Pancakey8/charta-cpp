@@ -119,6 +119,17 @@ fn test-str-ops () -> (int) {
                                          6
 }
 
+fn test-apply () -> (int) {
+↓                          2              3                4
+                           ↑              ↑                ↑
+→ 1 ≍ ▷ 2 ≠ ? ≍ 5 ⊼ ▷ 10 ≠ ? 'A' ⊼ ▷ 65 ≠ ? "hey" ↕ ▷ -5 ≠ ? 0
+    ↓       ↓ ↓
+    1       1 → ∈ char = ? ∈ int = ? -5
+    +                    ↓         ↓
+                        ord        2
+                                   *
+}
+
 fn main () -> () {
 →     "< > ≤ ≥" test-comparisons test ↓
 ↓              test test-equals "= ≠" ←
@@ -128,5 +139,6 @@ fn main () -> () {
 ↓          test test-bool-ops "∧ ∨ ¬" ←
 →          "type" test-type-info test ↓
 ↓ test test-more-stk-ops "⧺ ⇆ ↙ ↘ ++" ←
-→ "str ℓ @ @! . &" test-str-ops test
+→ "str ℓ @ @! . &" test-str-ops test  ↓
+                  test test-apply "▷" ←
 }

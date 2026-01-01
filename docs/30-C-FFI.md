@@ -156,3 +156,13 @@ fn main () -> () {
 → 10 call-dup dbg
 }
 ```
+
+## Includes & C-specifics
+
+C code may require external headers and linking. Any C compiler arguments may be
+passed using `-cargs "<flags>"`. For example, one may use libm with `-cargs '-lm -include "math.h"'`.
+
+Specifying includes however causes clutter and is potentially fragile, as such
+`cimport "header.h"`, e.g. `cimport "math.h"`, may be used to specify required
+headers. The location of `cimport` doesn't matter as it is always hoisted to the
+top.

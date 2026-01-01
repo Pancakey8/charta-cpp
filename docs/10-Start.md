@@ -181,6 +181,10 @@ fn main () -> () {
 }
 ```
 
+As with stacks, function values are constructed indirectly. The operator `≍`
+(`~~`) takes a perpendicular branch and pushes it as a function to the stack, to
+later be called with `▷` (`ap`).
+
 Above snippet outputs `[3, 2, 1]`. For stack and stack-related notations, the
 top of the stack is always written first. We will also observe this when talking
 about functions, as function parameters & returns are written in the order of
@@ -242,6 +246,10 @@ attempts to return the rest of the stack as a homogeneous *stack object* of
 `<type>`s. Unlike homogeneous stacks, returning a heterogeneous stack isn't done
 implicitly; it must be specified as `stack` in the return list and must be
 constructed explicitly if desired.
+
+Function values constructed with `≍` do not have to specify an argument or
+return list, as they operate on the entire stack. Function values can be
+reasoned about as inlined operations.
 
 ## Next Step
 

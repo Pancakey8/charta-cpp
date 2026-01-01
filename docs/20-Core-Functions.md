@@ -135,6 +135,14 @@ not implemented as a core function.
 | `&`   |        | Concatenates two strings                                                                |
 | `.`   |        | Pushes a character onto a string                                                        |
 
+## Function operations
+
+These operations apply to function values.
+
+| Name | ASCII | Description                           |
+|:----:|:-----:|:--------------------------------------|
+| `▷`  | `ap`  | Applies function to the entire stack. |
+
 ## I/O
 
 **TODO:** This section is lacking, but [C FFI](./30-C-FFI.md) should cover the missing pieces.

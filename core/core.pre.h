@@ -227,7 +227,7 @@ ch_stack_node *_mangle_(strapp, "&")(ch_stack_node **full);
 ch_stack_node *_mangle_(strpush, ".")(ch_stack_node **full);
 
 ch_stack_node *_mangle_(fnapply, "ap")(ch_stack_node **full);
-static inline ch_stack_node *_mangle_(fnapply2, "⧁")(ch_stack_node **full) {
+static inline ch_stack_node *_mangle_(fnapply2, "▷")(ch_stack_node **full) {
     return _mangle_(fnapply, "ap")(full);
 }
 // panic
