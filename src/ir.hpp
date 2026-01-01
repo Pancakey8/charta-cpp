@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <string>
 #include <variant>
+#include <vector>
 
 namespace ir {
 struct IrPos {
@@ -23,11 +24,14 @@ struct Instruction {
         Goto,
         Label,
         Exit,
+        Subroutine,
         GotoPos,
         LabelPos
     } kind;
 
-    std::variant<int, float, char32_t, std::string, IrPos, bool> value;
+    std::variant<int, float, char32_t, std::string, IrPos, bool,
+                 std::vector<Instruction>>
+        value;
 
     std::string show();
 };

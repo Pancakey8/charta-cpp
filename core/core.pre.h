@@ -10,7 +10,8 @@ typedef enum {
     CH_VALK_CHAR,
     CH_VALK_STRING,
     CH_VALK_STACK,
-    CH_VALK_OPAQUE
+    CH_VALK_OPAQUE,
+    CH_VALK_FUNCTION
 } ch_value_kind;
 
 typedef struct {
@@ -41,6 +42,7 @@ typedef struct {
         ch_string s;
         struct ch_stack_node *stk;
         void *op;
+        struct ch_stack_node *(*fn)(struct ch_stack_node **);
     } value;
 } ch_value;
 
@@ -58,6 +60,9 @@ ch_value ch_valof_bool(char n);
 ch_value ch_valof_stack(struct ch_stack_node *n);
 
 ch_value ch_valof_opaque(void *ptr);
+
+ch_value
+ch_valof_function(struct ch_stack_node *(*fn)(struct ch_stack_node **));
 
 char ch_valas_bool(ch_value v);
 
@@ -220,4 +225,9 @@ ch_stack_node *_mangle_(strget, "@")(ch_stack_node **full);
 ch_stack_node *_mangle_(strset, "@!")(ch_stack_node **full);
 ch_stack_node *_mangle_(strapp, "&")(ch_stack_node **full);
 ch_stack_node *_mangle_(strpush, ".")(ch_stack_node **full);
+
+ch_stack_node *_mangle_(fnapply, "ap")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(fnapply2, "⧁")(ch_stack_node **full) {
+    return _mangle_(fnapply, "ap")(full);
+}
 // panic

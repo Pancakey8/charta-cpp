@@ -200,7 +200,12 @@ ch_value ch_valof_stack(struct ch_stack_node *n) {
 
 ch_value ch_valof_opaque(void *ptr) {
     return (ch_value){.kind = CH_VALK_OPAQUE, .value.op = ptr};
-}    
+}
+
+ch_value
+ch_valof_function(struct ch_stack_node *(*fn)(struct ch_stack_node **)) {
+    return (ch_value){.kind = CH_VALK_FUNCTION, .value.fn = fn};
+}
 
 char *ch_valk_name(ch_value_kind k) {
     switch (k) {
@@ -218,6 +223,8 @@ char *ch_valk_name(ch_value_kind k) {
         return "stack";
     case CH_VALK_OPAQUE:
         return "opaque";
+    case CH_VALK_FUNCTION:
+        return "function";
     }
 }
 
@@ -430,6 +437,10 @@ ch_string print_value_str(ch_value v) {
     case CH_VALK_OPAQUE: {
         ch_str_append(&out, "<opaque>");
     }
+
+    case CH_VALK_FUNCTION: {
+        ch_str_append(&out, "<function>");
+    }
     }
 
     return out;
@@ -510,6 +521,10 @@ char val_equals(ch_value const *v1, ch_value const *v2) {
         return v1->value.i == v2->value.i;
     case CH_VALK_STRING:
         return strcmp(v1->value.s.data, v2->value.s.data) == 0;
+    case CH_VALK_FUNCTION:
+        return 0;
+    case CH_VALK_OPAQUE:
+        return 0;
     case CH_VALK_STACK: {
         ch_stack_node *s1 = v1->value.stk;
         ch_stack_node *s2 = v2->value.stk;
@@ -1177,4 +1192,15 @@ ch_stack_node *_mangle_(strpush, ".")(ch_stack_node **full) {
     ch_str_delete(&ap);
     ch_stk_push(&local, s);
     return local;
+}
+
+ch_stack_node *_mangle_(fnapply, "ap")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 1, 0);
+    ch_value val = ch_stk_pop(&local);
+    if (val.kind != CH_VALK_FUNCTION) {
+        printf("ERR: 'ap' expected function, got %s", ch_valk_name(val.kind));
+        exit(1);
+    }
+    *full = val.value.fn(full);
+    return NULL;
 }

@@ -34,5 +34,17 @@ std::string ir::Instruction::show() {
         auto pos = std::get<IrPos>(value);
         return std::format("Label ({},{},{})", pos.x, pos.y, pos.length);
     }
+    case Subroutine: {
+        auto routine = std::get<std::vector<Instruction>>(value);
+        std::string instrs{};
+        if (!routine.empty()) {
+            instrs += routine.front().show();
+            for (auto instr = routine.begin() + 1;
+                 instr != routine.end() && instrs.size() < 100; ++instr) {
+                instrs += ", " + instr->show();
+            }
+        }
+        return std::format("Subroutine [{}]", instrs);
+    }
     }
 }

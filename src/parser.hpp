@@ -40,6 +40,7 @@ struct Token {
         Down,
         Linebreak,
         FFIQuote,
+        Subroutine,
         Space
     } kind;
     std::variant<int, float, char32_t, std::string> value;
@@ -86,6 +87,7 @@ struct Node {
         DirUp,
         DirRight,
         DirDown,
+        Subroutine,
         Space
     } kind;
     std::size_t length;

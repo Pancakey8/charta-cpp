@@ -5,6 +5,7 @@
 #include "traverser.hpp"
 #include <cassert>
 #include <print>
+#include <ranges>
 #include <sstream>
 
 std::string intercalate(std::vector<std::string> list, std::string delim) {
@@ -107,8 +108,9 @@ void emit_foreign(traverser::EmbeddedFn fn, std::string &out) {
     out += body;
 }
 
-void emit_native(traverser::NativeFn fn, std::string &out) {
-    for (auto &ir : fn.body) {
+void emit_native(traverser::NativeFn fn, std::string &out,
+                 bool hijack = false) {
+    for (auto [i, ir] : fn.body | std::ranges::views::enumerate) {
         switch (ir.kind) {
         case ir::Instruction::PushInt:
             out += "ch_stk_push(&__istack, ch_valof_int(" +
@@ -144,6 +146,12 @@ void emit_native(traverser::NativeFn fn, std::string &out) {
                    std::get<std::string>(ir.value) + ";\n";
             break;
         }
+        case ir::Instruction::Subroutine: {
+            std::string sub = mangle(fn.name) + "__i" + std::to_string(i);
+            out +=
+                "ch_stk_push(&__istack, ch_valof_function(&" + sub + "));\n";
+            break;
+        }
         case ir::Instruction::Goto: {
             out += "goto " + std::get<std::string>(ir.value) + ";\n";
             break;
@@ -153,12 +161,16 @@ void emit_native(traverser::NativeFn fn, std::string &out) {
             break;
         }
         case ir::Instruction::Exit: {
-            auto tmp = get_temp();
-            out += "ch_stack_node*" + tmp + "=ch_stk_args(&__istack, " +
-                   std::to_string(fn.rets.args.size()) + ", " +
-                   std::to_string(fn.rets.rest.has_value()) + ");\n";
-            out += "ch_stk_delete(&__istack);\n";
-            out += "return " + tmp + ";\n";
+            if (hijack) {
+                out += "return __istack;\n";
+            } else {
+                auto tmp = get_temp();
+                out += "ch_stack_node*" + tmp + "=ch_stk_args(&__istack, " +
+                       std::to_string(fn.rets.args.size()) + ", " +
+                       std::to_string(fn.rets.rest.has_value()) + ");\n";
+                out += "ch_stk_delete(&__istack);\n";
+                out += "return " + tmp + ";\n";
+            }
             break;
         }
         case ir::Instruction::GotoPos:
@@ -177,14 +189,19 @@ std::string backend::c::make_c(Program prog,
         full += "#include " + parser::quote_str(inc) + "\n";
     }
     for (auto fn : prog) {
-        auto name = [&fn] {
-            if (auto native = std::get_if<traverser::NativeFn>(&fn)) {
-                return native->name;
-            } else if (auto foreign = std::get_if<traverser::EmbeddedFn>(&fn)) {
-                return foreign->name;
+        if (auto native = std::get_if<traverser::NativeFn>(&fn)) {
+            std::string name{mangle(native->name)};
+            full += "ch_stack_node *" + name + "(ch_stack_node **);\n";
+            for (std::size_t i = 0; i < native->body.size(); ++i) {
+                if (native->body[i].kind == ir::Instruction::Subroutine) {
+                    full += "ch_stack_node *" + name + "__i" +
+                            std::to_string(i) + "(ch_stack_node **);\n";
+                }
             }
-        }();
-        full += "ch_stack_node *" + mangle(name) + "(ch_stack_node **);\n";
+        } else if (auto foreign = std::get_if<traverser::EmbeddedFn>(&fn)) {
+            full += "ch_stack_node *" + mangle(foreign->name) +
+                    "(ch_stack_node **);\n";
+        }
     }
     full += "\n";
     for (auto fn : prog) {
@@ -195,6 +212,26 @@ std::string backend::c::make_c(Program prog,
                 return std::pair{foreign->name, foreign->args};
             }
         }();
+        if (auto native = std::get_if<traverser::NativeFn>(&fn)) {
+            for (auto [i, ir] : native->body | std::ranges::views::enumerate) {
+                if (ir.kind != ir::Instruction::Subroutine)
+                    continue;
+                std::string fname = mangle(name) + "__i" + std::to_string(i);
+                full +=
+                    "ch_stack_node *" + fname + "(ch_stack_node **__ifull) {\n";
+                full += "ch_stack_node *__istack = ch_stk_new();\n";
+                full += "ch_stk_append(&__istack, *__ifull);\n";
+                full += "*__ifull = NULL;\n";
+                emit_native(
+                    traverser::NativeFn{
+                        fname,
+                        {},
+                        {},
+                        std::get<std::vector<ir::Instruction>>(ir.value)},
+                    full, true);
+                full += "}\n";
+            }
+        }
         full +=
             "ch_stack_node *" + mangle(name) + "(ch_stack_node **__ifull) {\n";
         full += "ch_stack_node *__istack = ch_stk_args(__ifull, " +

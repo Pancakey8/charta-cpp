@@ -2,28 +2,13 @@
 #include "ir.hpp"
 #include "parser.hpp"
 #include <cassert>
-#include <cstdint>
 #include <cstdlib>
 #include <format>
 #include <unordered_set>
 #include <vector>
 
 using namespace ir;
-
-struct Pos {
-    long x;
-    long y;
-
-    Pos operator+(Pos other) { return Pos{x + other.x, y + other.y}; }
-    Pos operator*(int scalar) { return Pos{x * scalar, y * scalar}; }
-    bool operator==(Pos other) const { return x == other.x && y == other.y; }
-};
-
-struct PosHash {
-    std::uint64_t operator()(Pos const &pos) const {
-        return std::hash<int>()(pos.x) ^ (std::hash<int>()(pos.y) << 1);
-    }
-};
+using Pos = traverser::Pos;
 
 std::optional<parser::Node> grid_at(parser::Grid const &grid, Pos pos) {
     // std::println("{}, {}", pos.x, pos.y);
@@ -102,7 +87,8 @@ std::vector<std::pair<Pos, Pos>> get_perps(parser::Grid const &grid, Pos pos,
     return poses;
 }
 
-std::vector<Instruction> traverser::traverse(parser::Grid grid) {
+std::vector<Instruction> traverser::traverse(parser::Grid grid, Pos start,
+                                             Pos dir) {
     std::vector<Instruction> instrs{};
     std::unordered_set<Pos, PosHash> visited{};
     auto run_emit = [&](Pos dir, Pos pos, auto &&self) -> void {
@@ -171,6 +157,33 @@ std::vector<Instruction> traverser::traverse(parser::Grid grid) {
                 }
                 break;
             }
+            case parser::Node::Subroutine: {
+                auto perps = get_perps(grid, pos, dir);
+                if (n->length == 2) {
+                    if (auto at = grid_at(grid, pos + right);
+                        at && at->kind == parser::Node::Subroutine) {
+                        auto dirs = get_perps(grid, pos + right, dir);
+                        perps.insert(perps.end(), dirs.begin(), dirs.end());
+                    } else if (auto at = grid_at(grid, pos + left);
+                               at && at->kind == parser::Node::Subroutine) {
+                        auto dirs = get_perps(grid, pos + left, dir);
+                        perps.insert(perps.end(), dirs.begin(), dirs.end());
+                    }
+                }
+
+                if (perps.size() == 1) {
+                    auto sub = traverse(grid, perps.front().second,
+                                        perps.front().first);
+                    instrs.emplace_back(
+                        Instruction{Instruction::Subroutine, std::move(sub)});
+                    self(dir, next_pos, self);
+                } else {
+                    throw TraverserError(
+                        pos.x, pos.y,
+                        "Subroutine expected 1 direction, got " +
+                            std::to_string(perps.size()));
+                }
+            }
             case parser::Node::DirLeft:
                 self(left, pos + (is_vert(dir) ? left : left * n->length),
                      self);
@@ -197,7 +210,7 @@ std::vector<Instruction> traverser::traverse(parser::Grid grid) {
         }
     };
 
-    run_emit({1, 0}, {0, 0}, run_emit);
+    run_emit(dir, start, run_emit);
     // for (auto &instr : instrs) {
     //     std::println("{}", instr.show());
     // }

@@ -2,6 +2,7 @@
 
 #include "ir.hpp"
 #include "parser.hpp"
+#include <cstdint>
 
 namespace traverser {
 struct NativeFn {
@@ -16,7 +17,7 @@ struct EmbeddedFn {
     parser::Return rets;
     std::string body;
 };
-  using Function = std::variant<NativeFn, EmbeddedFn>;
+using Function = std::variant<NativeFn, EmbeddedFn>;
 struct TraverserError : std::exception {
     int x;
     int y;
@@ -25,5 +26,20 @@ struct TraverserError : std::exception {
     TraverserError(int x, int y, std::string what)
         : std::exception(), x(x), y(y), what(std::move(what)) {}
 };
-std::vector<ir::Instruction> traverse(parser::Grid grid);
+struct Pos {
+    long x;
+    long y;
+
+    Pos operator+(Pos other) { return Pos{x + other.x, y + other.y}; }
+    Pos operator*(int scalar) { return Pos{x * scalar, y * scalar}; }
+    bool operator==(Pos other) const { return x == other.x && y == other.y; }
+};
+
+struct PosHash {
+    std::uint64_t operator()(Pos const &pos) const {
+        return std::hash<int>()(pos.x) ^ (std::hash<int>()(pos.y) << 1);
+    }
+};
+std::vector<ir::Instruction> traverse(parser::Grid grid, Pos start = {0, 0},
+                                      Pos dir = {1, 0});
 } // namespace traverser

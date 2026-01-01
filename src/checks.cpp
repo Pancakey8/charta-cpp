@@ -47,6 +47,10 @@ checks::Type tstack_many(checks::Type const t) {
                                           std::make_shared<checks::Type>(t)}};
 }
 
+checks::Type tfunction(std::vector<ir::Instruction> is) {
+    return checks::Type{checks::Type::Function, std::move(is)};
+}
+
 checks::Type many(checks::Type const t) {
     return checks::Type{checks::Type::Many, std::make_shared<checks::Type>(t)};
 }
@@ -88,6 +92,8 @@ checks::Type decl2type(parser::TypeSig decl, std::string fname,
         return tstack_any;
     } else if (decl.name == "opaque") {
         return topaque;
+    } else if (decl.name == "function") {
+        return tfunction({});
     } else {
         if (decl.name.starts_with("#")) {
             if (generics.contains(decl.name)) {
@@ -326,6 +332,14 @@ bool any_unresolved(std::vector<checks::Type> const &types,
 
 void checks::TypeChecker::try_apply(std::vector<Type> &stack, Function sig,
                                     std::string caller, std::string callee) {
+    if (sig.effect) {
+        try {
+            (*sig.effect)(*this, stack);
+        } catch (std::string s) {
+            throw CheckError(std::move(s), callee);
+        }
+        return;
+    }
     std::vector<int> our_generics{};
     for (auto &elem : stack) {
         if (elem.kind == Type::Generic) {
@@ -498,23 +512,20 @@ bool checks::TypeChecker::unify(std::vector<checks::Type> &prev,
     return true;
 }
 
-void checks::TypeChecker::verify(traverser::NativeFn fn) {
-    auto expected = sigs.at(fn.name)();
-    std::vector<Type> initial;
-    if (expected.is_ellipses) {
-        initial.emplace_back(tstack_any);
-    }
-    initial.insert(initial.end(), expected.args.rbegin(), expected.args.rend());
-
+std::vector<std::vector<checks::Type>>
+checks::TypeChecker::run_stack(std::vector<checks::Type> initial,
+                               std::string fname,
+                               std::vector<ir::Instruction> fbody) {
     std::vector<State> states{State{0, initial}};
     std::unordered_map<std::size_t, std::vector<Type>> been_to{};
+    std::vector<std::vector<Type>> stacks{};
 
     if (show_typechecks) {
-        std::println("STATES - {}", fn.name);
+        std::println("STATES - {}", fname);
     }
     while (!states.empty()) {
         State &current = states.back();
-        auto instr = fn.body[current.ip];
+        auto instr = fbody[current.ip];
         auto &stack = current.stack;
 
         if (show_typechecks) {
@@ -556,15 +567,21 @@ void checks::TypeChecker::verify(traverser::NativeFn fn) {
             stack.emplace_back(tstring);
             ++current.ip;
             break;
+        case ir::Instruction::Subroutine:
+            stack.emplace_back(
+                Type{Type::Function,
+                     std::get<std::vector<ir::Instruction>>(instr.value)});
+            ++current.ip;
+            break;
         case ir::Instruction::Call: {
             auto callee = std::get<std::string>(instr.value);
             if (!sigs.contains(callee)) {
                 throw CheckError(
                     std::format("Attempted to call undefined function '{}'",
                                 callee),
-                    fn.name);
+                    fname);
             }
-            try_apply(stack, sigs[callee](), fn.name, callee);
+            try_apply(stack, sigs[callee](), fname, callee);
             ++current.ip;
             break;
         }
@@ -573,31 +590,31 @@ void checks::TypeChecker::verify(traverser::NativeFn fn) {
                 throw CheckError(
                     "Branch expected bool, got " +
                         (stack.empty() ? "nothing" : stack.back().show()),
-                    fn.name);
+                    fname);
             }
             stack.pop_back();
             auto label_name = std::get<std::string>(instr.value);
-            auto label_pos = get_label(fn.body, label_name);
-            if (label_pos == fn.body.end()) {
+            auto label_pos = get_label(fbody, label_name);
+            if (label_pos == fbody.end()) {
                 throw CheckError("Attempted to jump to invalid label '" +
                                      label_name + "'",
-                                 fn.name);
+                                 fname);
             }
             ++current.ip;
             states.emplace_back(State{
-                static_cast<size_t>(std::distance(fn.body.cbegin(), label_pos)),
+                static_cast<size_t>(std::distance(fbody.cbegin(), label_pos)),
                 std::vector{stack}});
             break;
         }
         case ir::Instruction::Goto: {
             auto label_name = std::get<std::string>(instr.value);
-            auto label_pos = get_label(fn.body, label_name);
-            if (label_pos == fn.body.end()) {
+            auto label_pos = get_label(fbody, label_name);
+            if (label_pos == fbody.end()) {
                 throw CheckError("Attempted to jump to invalid label '" +
                                      label_name + "'",
-                                 fn.name);
+                                 fname);
             }
-            current.ip = std::distance(fn.body.cbegin(), label_pos);
+            current.ip = std::distance(fbody.cbegin(), label_pos);
             break;
         }
         case ir::Instruction::Label:
@@ -606,35 +623,7 @@ void checks::TypeChecker::verify(traverser::NativeFn fn) {
             ++current.ip;
             break;
         case ir::Instruction::Exit: {
-            auto have = stack.rbegin();
-            auto want = expected.rets.begin();
-
-            for (; want != expected.rets.end(); ++have, ++want) {
-                if (have == stack.rend()) {
-                    throw CheckError{
-                        std::format("Needed to return '{}', got nothing",
-                                    want->show()),
-                        fn.name};
-                }
-                if (!is_matching(*have, *want)) {
-                    throw CheckError{
-                        std::format("Needed to return '{}', got '{}'",
-                                    want->show(), have->show()),
-                        fn.name};
-                }
-            }
-
-            if (expected.returns_many) {
-                for (; have != stack.rend(); ++have) {
-                    if (!is_matching(*have, *expected.returns_many)) {
-                        throw CheckError{
-                            std::format("Needed to return '{}', got '{}'",
-                                        expected.returns_many->show(),
-                                        have->show()),
-                            fn.name};
-                    }
-                }
-            }
+            stacks.emplace_back(stack);
             states.pop_back();
             break;
         }
@@ -642,6 +631,50 @@ void checks::TypeChecker::verify(traverser::NativeFn fn) {
         case ir::Instruction::LabelPos:
             assert(false && "Unreachable instruction in type check");
             break;
+        }
+    }
+
+    return stacks;
+}
+
+void checks::TypeChecker::verify(traverser::NativeFn fn) {
+    auto expected = sigs.at(fn.name)();
+    std::vector<Type> initial;
+    if (expected.is_ellipses) {
+        initial.emplace_back(tstack_any);
+    }
+    initial.insert(initial.end(), expected.args.rbegin(), expected.args.rend());
+
+    auto stacks = run_stack(initial, fn.name, fn.body);
+
+    for (auto &stack : stacks) {
+        auto have = stack.rbegin();
+        auto want = expected.rets.begin();
+
+        for (; want != expected.rets.end(); ++have, ++want) {
+            if (have == stack.rend()) {
+                throw CheckError{
+                    std::format("Needed to return '{}', got nothing",
+                                want->show()),
+                    fn.name};
+            }
+            if (!is_matching(*have, *want)) {
+                throw CheckError{std::format("Needed to return '{}', got '{}'",
+                                             want->show(), have->show()),
+                                 fn.name};
+            }
+        }
+
+        if (expected.returns_many) {
+            for (; have != stack.rend(); ++have) {
+                if (!is_matching(*have, *expected.returns_many)) {
+                    throw CheckError{
+                        std::format("Needed to return '{}', got '{}'",
+                                    expected.returns_many->show(),
+                                    have->show()),
+                        fn.name};
+                }
+            }
         }
     }
 }
@@ -668,7 +701,9 @@ std::string checks::Type::show() const {
     case String:
         return "string";
     case Opaque:
-         return "opaque";
+        return "opaque";
+    case Function:
+        return "function";
     case Stack: {
         return std::get<StackType>(val).show();
     }
@@ -781,6 +816,35 @@ checks::Function strconv_sig() {
     checks::Type a = generic();
     return {{a}, {tstring}};
 }
+checks::Function apply_sig() {
+    std::function<void(checks::TypeChecker &, std::vector<checks::Type> &)>
+        effect;
+    effect = [](checks::TypeChecker &checker,
+                std::vector<checks::Type> &stack) {
+        if (stack.empty() || stack.back().kind != checks::Type::Function) {
+            throw std::format(
+                "'⧁' expected 'function', got {}",
+                stack.empty() ? "nothing" : ("'" + stack.back().show() + "'"));
+        }
+        auto fn = std::get<std::vector<ir::Instruction>>(stack.back().val);
+        stack.pop_back();
+        auto stks = checker.run_stack(stack, "⧁", std::move(fn));
+        std::vector<checks::Type> sum{};
+        if (!stks.empty()) {
+            sum = stks.front();
+            for (auto stk = stks.begin() + 1; stk != stks.end(); ++stk) {
+                checker.unify(sum, *stk);
+            }
+        }
+        if (checker.show_typechecks) {
+            std::println("Subroutine result:");
+            print_stk(sum);
+            std::println("");
+        }
+        stack = sum;
+    };
+    return checks::Function(effect);
+}
 
 static const std::unordered_map<std::string, std::function<checks::Function()>>
     internal_sigs{
@@ -857,7 +921,9 @@ static const std::unordered_map<std::string, std::function<checks::Function()>>
         {"@", funit({{tint, tstring}, {tchar, tstring}})},
         {"@!", funit({{tint, tchar, tstring}, {tstring}})},
         {"&", funit({{tstring, tstring}, {tstring}})},
-        {".", funit({{tchar, tstring}, {tstring}})}};
+        {".", funit({{tchar, tstring}, {tstring}})},
+        {"⧁", apply_sig},
+        {"ap", apply_sig}};
 
 checks::TypeChecker::TypeChecker(std::vector<traverser::Function> fns,
                                  bool show_typechecks)
@@ -876,6 +942,7 @@ bool checks::Type::operator==(Type const &other) const {
     case String:
     case Liquid:
     case Opaque:
+    case Function:
         return true;
     case Union: {
         auto const &a = std::get<std::vector<Type>>(val);

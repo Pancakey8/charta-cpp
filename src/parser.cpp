@@ -189,6 +189,10 @@ bool parser::Lexer::parse_special() {
         pop();
         output.emplace_back(Token{start, cursor, 1, Token::Down, {}});
         return true;
+    case U'≍':
+        pop();
+        output.emplace_back(Token{start, cursor, 1, Token::Subroutine, {}});
+        return true;
     default:
         if (match("->")) {
             output.emplace_back(
@@ -235,6 +239,11 @@ bool parser::Lexer::parse_special() {
             output.emplace_back(Token{start, cursor, 2, Token::False, {}});
             return true;
         }
+
+        if (match("~~")) {
+            output.emplace_back(Token{start, cursor, 2, Token::Subroutine, {}});
+            return true;
+        }            
 
         return false;
     }
@@ -409,6 +418,9 @@ std::optional<parser::Node> parser::Parser::parse_node() {
         case Token::QMark:
             ++cursor;
             return Node{Node::Branch, t->length, {}};
+        case Token::Subroutine:
+            ++cursor;
+            return Node{Node::Subroutine, t->length, {}};
         case Token::Left:
             ++cursor;
             return Node{Node::DirLeft, t->length, {}};
