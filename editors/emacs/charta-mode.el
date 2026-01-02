@@ -89,14 +89,14 @@
   "Major mode for Charta."
   :syntax-table charta-mode-syntax-table
   (setq font-lock-defaults (list charta-font-lock-keywords))
-  (font-lock-mode 1)
-  (font-lock-ensure)
   (add-hook 'font-lock-extend-region-functions
             #'charta--extend-font-lock-region
-            nil t))
+            nil t)
+  (font-lock-update)
+  (display-line-numbers-mode 1))
 
 ;;;###autoload
-(add-to-list 'auto-mode-alist '("\\.charta\\'" . charta-mode))
+(add-to-list 'auto-mode-alist '("\\.ch\\'" . charta-mode))
 
 (provide 'charta-mode)
 ;;; charta-mode.el ends here
