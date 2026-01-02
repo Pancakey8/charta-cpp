@@ -500,7 +500,7 @@ ch_stack_node *_mangle_(over, "ovr")(ch_stack_node **full) {
 
 ch_stack_node *_mangle_(pick, "pck")(ch_stack_node **full) {
     ch_stack_node *local = ch_stk_args(full, 3, 0);
-    ch_value val = ch_valcpy(local->next->next);
+    ch_value val = ch_valcpy(&local->next->next->val);
     ch_stk_push(&local, val);
     return local;
 }
@@ -1212,7 +1212,8 @@ ch_stack_node *_mangle_(fnapply, "ap")(ch_stack_node **full) {
         printf("ERR: 'ap' expected function, got %s", ch_valk_name(val.kind));
         exit(1);
     }
-    *full = val.value.fn(full);
+    ch_stack_node *ret = val.value.fn(full);
+    ch_stk_append(full, ret);
     return NULL;
 }
 
@@ -1220,9 +1221,26 @@ ch_stack_node *_mangle_(fntail, "tail")(ch_stack_node **full) {
     ch_stack_node *local = ch_stk_args(full, 2, 0);
     ch_value val = ch_stk_pop(&local);
     if (val.kind != CH_VALK_FUNCTION) {
-        printf("ERR: 'ap' expected function, got %s", ch_valk_name(val.kind));
+        printf("ERR: 'tail' expected function, got %s", ch_valk_name(val.kind));
         exit(1);
     }
-    *full = val.value.fn(full);
+    ch_stack_node *ret = val.value.fn(full);
+    ch_stk_append(full, ret);
     return local;
+}
+
+ch_stack_node *_mangle_(repeat, "repeat")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 2, 0);
+    ch_value count = ch_stk_pop(&local);
+    ch_value fn = ch_stk_pop(&local);
+    if (count.kind != CH_VALK_INT || fn.kind != CH_VALK_FUNCTION) {
+        printf("ERR: 'repeat' expected int and function, got %s and %s",
+               ch_valk_name(count.kind), ch_valk_name(fn.kind));
+        exit(1);
+    }
+    for (int i = 0; i < count.value.i; ++i) {
+        ch_stack_node *ret = fn.value.fn(full);
+        ch_stk_append(full, ret);
+    }        
+    return NULL;
 }

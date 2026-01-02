@@ -234,7 +234,7 @@ bool is_matching(checks::Type got, checks::Type expected) {
                 std::get<std::vector<checks::Type>>(stk_expected.val);
             if (stk_got.kind == checks::StackType::Many) {
                 checks::Type got_all =
-                    *std::get<std::shared_ptr<checks::Type>>(stk_expected.val);
+                    *std::get<std::shared_ptr<checks::Type>>(stk_got.val);
                 for (auto &elem : exp_exact) {
                     if (!is_matching(got_all, elem)) {
                         return false;
@@ -863,6 +863,26 @@ void ensure(std::vector<checks::Type> const &stack,
     }
 }
 
+std::vector<checks::Type> apply_subroutine(
+    checks::TypeChecker &checker, std::vector<checks::Type> const &stack,
+    std::vector<ir::Instruction> const &fn, std::string const name) {
+
+    auto stks = checker.run_stack(stack, name, fn);
+    std::vector<checks::Type> sum{};
+    if (!stks.empty()) {
+        sum = stks.front();
+        for (auto stk = stks.begin() + 1; stk != stks.end(); ++stk) {
+            checker.unify(sum, *stk);
+        }
+    }
+    if (checker.show_typechecks) {
+        std::println("Subroutine result:");
+        print_stk(sum);
+        std::println("");
+    }
+    return sum;
+}
+
 checks::Function apply_sig() {
     std::function<void(checks::TypeChecker &, std::vector<checks::Type> &)>
         effect;
@@ -876,19 +896,7 @@ checks::Function apply_sig() {
                 checks::Type::Many, std::make_shared<checks::Type>(tliquid)});
             return;
         }
-        auto stks = checker.run_stack(stack, "▷", std::move(*fn));
-        std::vector<checks::Type> sum{};
-        if (!stks.empty()) {
-            sum = stks.front();
-            for (auto stk = stks.begin() + 1; stk != stks.end(); ++stk) {
-                checker.unify(sum, *stk);
-            }
-        }
-        if (checker.show_typechecks) {
-            std::println("Subroutine result:");
-            print_stk(sum);
-            std::println("");
-        }
+        auto sum = apply_subroutine(checker, stack, *fn, "▷");
         stack = sum;
     };
     return checks::Function(effect);
@@ -901,14 +909,60 @@ checks::Function tail_sig() {
                 std::vector<checks::Type> &stack) {
         ensure(stack, {tliquid, tfunction(std::nullopt)}, "⟜");
         checks::Type top;
-        if (stack.back().kind != checks::Type::Many) { // Does this happen?
+        if (stack.back().kind != checks::Type::Many) {
             top = *(stack.end() - 2);
             stack.erase(stack.end() - 2);
         }
-        (*apply_sig().effect)(checker, stack);
+        auto fn = get_irs(stack.back());
+        stack.pop_back();
+        if (!fn) {
+            stack.emplace_back(checks::Type{
+                checks::Type::Many, std::make_shared<checks::Type>(tliquid)});
+            return;
+        }
+        stack = apply_subroutine(checker, stack, *fn, "⟜");
         if (stack.back().kind != checks::Type::Many) {
             stack.emplace_back(top);
         }
+    };
+    return checks::Function(effect);
+}
+
+checks::Function repeat_sig() {
+    std::function<void(checks::TypeChecker &, std::vector<checks::Type> &)>
+        effect;
+    effect = [](checks::TypeChecker &checker,
+                std::vector<checks::Type> &stack) {
+        ensure(stack, {tfunction(std::nullopt), tint}, "⋄");
+        if (stack.back().kind != checks::Type::Many) {
+            stack.pop_back();
+        }
+        auto fn = get_irs(stack.back());
+        stack.pop_back();
+        if (!fn) {
+            stack.emplace_back(checks::Type{
+                checks::Type::Many, std::make_shared<checks::Type>(tliquid)});
+            return;
+        }
+        std::vector<checks::Type> prev = stack;
+        stack = apply_subroutine(checker, stack, *fn, "⋄");
+        while (checker.unify(prev, stack)) {
+            stack = prev;
+            stack = apply_subroutine(checker, stack, *fn, "⋄");
+        }
+    };
+    return checks::Function(effect);
+}
+
+checks::Function box_sig() {
+    std::function<void(checks::TypeChecker &, std::vector<checks::Type> &)>
+        effect;
+    effect = [](checks::TypeChecker &, std::vector<checks::Type> &stack) {
+        checks::Type t =
+            checks::Type{checks::Type::Stack,
+                         checks::StackType{checks::StackType::Exact, stack}};
+        stack.clear();
+        stack.emplace_back(t);
     };
     return checks::Function(effect);
 }
@@ -942,8 +996,8 @@ static const std::unordered_map<std::string, std::function<checks::Function()>>
         {"*", arithm_sig},
         {"/", arithm_sig},
         {"%", arithm_sig},
-        {"box", funit({{}, {tstack_any}, true, {}})},
-        {"▭", funit({{}, {tstack_any}, true, {}})},
+        {"box", box_sig},
+        {"▭", box_sig},
         {"pop", pop_sig},
         {"◌", pop_sig},
         {"ins", ins_sig},
@@ -994,7 +1048,9 @@ static const std::unordered_map<std::string, std::function<checks::Function()>>
         {"▷", apply_sig},
         {"ap", apply_sig},
         {"⟜", tail_sig},
-        {"tail", tail_sig}};
+        {"tail", tail_sig},
+        {"⋄", repeat_sig},
+        {"repeat", repeat_sig}};
 
 checks::TypeChecker::TypeChecker(std::vector<traverser::Function> fns,
                                  bool show_typechecks)
