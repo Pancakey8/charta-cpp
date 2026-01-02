@@ -36,9 +36,9 @@ std::string get_temp() {
     return "__itemp" + std::to_string(temp_counter++);
 }
 
-std::string process_returns(traverser::EmbeddedFn const &fn,
+std::string process_returns(traverser::Function const &fn,
                             std::string const &defers) {
-    std::istringstream in(fn.body);
+    std::istringstream in(std::get<std::string>(fn.body));
     std::string out;
     std::string line;
     std::string const match{"@return@"};
@@ -82,7 +82,7 @@ std::string process_mangling(std::string const &body) {
     return mangled;
 }
 
-void emit_foreign(traverser::EmbeddedFn fn, std::string &out) {
+void emit_foreign(traverser::Function fn, std::string &out) {
     std::string defers{};
     for (auto &[name, type] : fn.args.args) {
         if (type.name == "stack" || type.is_stack) {
@@ -98,7 +98,8 @@ void emit_foreign(traverser::EmbeddedFn fn, std::string &out) {
         } else if (type.name == "bool") {
             out += "char " + name + "=ch_stk_pop(&__istack).value.b;\n";
         } else if (type.name == "function") {
-            out += "ch_stack_node *(*" + name + ")(ch_stack_node **) =ch_stk_pop(&__istack).value.fn;\n";
+            out += "ch_stack_node *(*" + name +
+                   ")(ch_stack_node **) =ch_stk_pop(&__istack).value.fn;\n";
         } else if (type.name == "string") {
             out += "ch_string " + name + "=ch_stk_pop(&__istack).value.s;\n";
             defers += "ch_str_delete(&" + name + ");\n";
@@ -110,9 +111,10 @@ void emit_foreign(traverser::EmbeddedFn fn, std::string &out) {
     out += body;
 }
 
-void emit_native(traverser::NativeFn fn, std::string &out,
+void emit_native(traverser::Function fn, std::string &out,
                  bool hijack = false) {
-    for (auto [i, ir] : fn.body | std::ranges::views::enumerate) {
+    for (auto [i, ir] : std::get<std::vector<ir::Instruction>>(fn.body) |
+                            std::ranges::views::enumerate) {
         switch (ir.kind) {
         case ir::Instruction::PushInt:
             out += "ch_stk_push(&__istack, ch_valof_int(" +
@@ -150,8 +152,7 @@ void emit_native(traverser::NativeFn fn, std::string &out,
         }
         case ir::Instruction::Subroutine: {
             std::string sub = mangle(fn.name) + "__i" + std::to_string(i);
-            out +=
-                "ch_stk_push(&__istack, ch_valof_function(&" + sub + "));\n";
+            out += "ch_stk_push(&__istack, ch_valof_function(&" + sub + "));\n";
             break;
         }
         case ir::Instruction::Goto: {
@@ -191,59 +192,56 @@ std::string backend::c::make_c(Program prog,
         full += "#include " + parser::quote_str(inc) + "\n";
     }
     for (auto fn : prog) {
-        if (auto native = std::get_if<traverser::NativeFn>(&fn)) {
-            std::string name{mangle(native->name)};
+        switch (fn.kind) {
+        case traverser::Function::Native: {
+            std::string name{mangle(fn.name)};
+            auto body = std::get<std::vector<ir::Instruction>>(fn.body);
             full += "ch_stack_node *" + name + "(ch_stack_node **);\n";
-            for (std::size_t i = 0; i < native->body.size(); ++i) {
-                if (native->body[i].kind == ir::Instruction::Subroutine) {
+            for (std::size_t i = 0; i < body.size(); ++i) {
+                if (body[i].kind == ir::Instruction::Subroutine) {
                     full += "ch_stack_node *" + name + "__i" +
                             std::to_string(i) + "(ch_stack_node **);\n";
                 }
             }
-        } else if (auto foreign = std::get_if<traverser::EmbeddedFn>(&fn)) {
-            full += "ch_stack_node *" + mangle(foreign->name) +
-                    "(ch_stack_node **);\n";
+            break;
+        }
+        case traverser::Function::Foreign: {
+            full +=
+                "ch_stack_node *" + mangle(fn.name) + "(ch_stack_node **);\n";
+            break;
+        }
         }
     }
     full += "\n";
     for (auto fn : prog) {
-        auto [name, args] = [&fn] {
-            if (auto native = std::get_if<traverser::NativeFn>(&fn)) {
-                return std::pair{native->name, native->args};
-            } else if (auto foreign = std::get_if<traverser::EmbeddedFn>(&fn)) {
-                return std::pair{foreign->name, foreign->args};
-            }
-        }();
-        if (auto native = std::get_if<traverser::NativeFn>(&fn)) {
-            for (auto [i, ir] : native->body | std::ranges::views::enumerate) {
+        if (fn.kind == traverser::Function::Native) {
+            auto body = std::get<std::vector<ir::Instruction>>(fn.body);
+            for (auto [i, ir] : body | std::ranges::views::enumerate) {
                 if (ir.kind != ir::Instruction::Subroutine)
                     continue;
-                std::string fname = mangle(name) + "__i" + std::to_string(i);
+                std::string fname = mangle(fn.name) + "__i" + std::to_string(i);
                 full +=
                     "ch_stack_node *" + fname + "(ch_stack_node **__ifull) {\n";
                 full += "ch_stack_node *__istack = ch_stk_new();\n";
                 full += "ch_stk_append(&__istack, *__ifull);\n";
                 full += "*__ifull = NULL;\n";
-                emit_native(
-                    traverser::NativeFn{
-                        fname,
-                        {},
-                        {},
-                        std::get<std::vector<ir::Instruction>>(ir.value)},
-                    full, true);
+                emit_native(fn, full, true);
                 full += "}\n";
             }
         }
-        full +=
-            "ch_stack_node *" + mangle(name) + "(ch_stack_node **__ifull) {\n";
+        full += "ch_stack_node *" + mangle(fn.name) +
+                "(ch_stack_node **__ifull) {\n";
         full += "ch_stack_node *__istack = ch_stk_args(__ifull, " +
-                std::to_string(args.args.size()) + ", " +
-                std::to_string(args.kind == parser::Argument::Ellipses) +
+                std::to_string(fn.args.args.size()) + ", " +
+                std::to_string(fn.args.kind == parser::Argument::Ellipses) +
                 ");\n";
-        if (auto native = std::get_if<traverser::NativeFn>(&fn)) {
-            emit_native(*native, full);
-        } else if (auto foreign = std::get_if<traverser::EmbeddedFn>(&fn)) {
-            emit_foreign(*foreign, full);
+        switch (fn.kind) {
+        case traverser::Function::Native:
+            emit_native(fn, full);
+            break;
+        case traverser::Function::Foreign:
+            emit_foreign(fn, full);
+            break;
         }
         full += "}\n";
     }

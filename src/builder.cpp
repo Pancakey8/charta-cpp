@@ -38,10 +38,12 @@ std::vector<traverser::Function> builder::Builder::traverse() {
                         std::println("\n");
                     }
                     fns.emplace_back(
-                        traverser::NativeFn{fn->name, fn->args, fn->rets, ir});
+                        traverser::Function{fn->name, fn->args, fn->rets, ir,
+                                            traverser::Function::Native});
                 } else if (auto ffi = std::get_if<std::string>(&fn->body)) {
-                    fns.emplace_back(traverser::EmbeddedFn{fn->name, fn->args,
-                                                           fn->rets, *ffi});
+                    fns.emplace_back(
+                        traverser::Function{fn->name, fn->args, fn->rets, *ffi,
+                                            traverser::Function::Foreign});
                 }
             } catch (traverser::TraverserError e) {
                 error(std::format("In {}, at ({}, {}): {}", fn->name, e.x, e.y,

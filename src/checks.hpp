@@ -9,89 +9,62 @@
 
 namespace checks {
 struct CheckError {
-    std::string what;
     std::string fname;
-};
-
-struct Type;
-
-struct StackType {
-    enum Kind { Exact, Many, Unknown } kind;
-    std::variant<std::vector<Type>, std::shared_ptr<Type>> val;
-
-    std::string show() const;
-
-    bool operator==(StackType const &other) const;
+    std::string what;
 };
 
 struct Type {
     enum Kind {
         Int,
         Float,
-        Bool,
         Char,
+        Bool,
         String,
-        Union,
         Stack,
-        Generic,
-        Liquid,
-        Many,
+        Function,
         Opaque,
-        Function
+        Generic,
+        Many,
     } kind;
-    std::variant<std::string, StackType, std::vector<Type>,
-                 std::shared_ptr<Type>, int,
-                 std::optional<std::vector<ir::Instruction>>>
-        val;
 
+    std::variant<std::optional<bool>, std::optional<std::vector<Type>>,
+                 std::optional<std::vector<ir::Instruction>>,
+                 std::shared_ptr<Type>, int>
+        value;
     std::string show() const;
-    bool operator==(Type const &other) const;
 };
 
-class TypeChecker;
+struct Effect {
+    virtual ~Effect();
+    virtual void operator()(std::vector<Type> &stack) = 0;
+};
 
-struct Function {
-    std::vector<Type> args;
-    std::vector<Type> rets;
-    bool is_ellipses{false};
-    std::optional<Type> returns_many{std::nullopt};
-    std::optional<std::function<void(TypeChecker &, std::vector<Type> &)>>
-        effect{std::nullopt};
-
-    Function()
-        : args{}, rets{}, is_ellipses{false}, returns_many{std::nullopt} {}
-
-    Function(std::function<void(TypeChecker &, std::vector<Type> &)> effect)
-        : args{}, rets{}, is_ellipses{false}, returns_many{std::nullopt},
-          effect{std::move(effect)} {}
-
-    Function(std::vector<Type> args, std::vector<Type> rets)
-        : args(std::move(args)), rets(std::move(rets)), is_ellipses{false} {}
-
-    Function(std::vector<Type> args, std::vector<Type> rets, bool is_ellipses,
-             std::optional<Type> returns_many)
-        : args(std::move(args)), rets(std::move(rets)),
-          is_ellipses{is_ellipses}, returns_many{std::move(returns_many)} {}
+struct StaticEffect : public Effect {
+    std::vector<Type> takes{};
+    std::vector<Type> leaves{};
+    std::string fname{};
+    StaticEffect(std::vector<Type> takes, std::vector<Type> leaves,
+                 std::string fname)
+        : takes(std::move(takes)), leaves(std::move(leaves)),
+          fname(std::move(fname)) {}
+    virtual void operator()(std::vector<Type> &stack) override;
 };
 
 class TypeChecker {
-    std::vector<traverser::Function> fns;
-    std::unordered_map<std::string, std::function<Function()>> sigs;
+    bool show_trace;
+    std::unordered_map<std::string, std::shared_ptr<Effect>>
+        signatures{};
+    std::unordered_map<std::string,
+                       std::pair<std::vector<Type>, std::vector<Type>>>
+        expectations{};
+    std::unordered_map<std::string, traverser::Function> decls{};
 
-    void collect_sigs();
-    void try_apply(std::vector<Type> &stack, Function sig, std::string caller,
-                   std::string callee);
-    void verify(traverser::NativeFn fn);
+    void collect_signatures();
 
   public:
-    TypeChecker(std::vector<traverser::Function> fns,
-                bool show_typechecks = false);
+    TypeChecker(std::vector<traverser::Function> decls,
+                bool show_trace = false);
 
-    bool show_typechecks;
-    bool unify(std::vector<Type> &prev, std::vector<Type> &current);
-    std::vector<std::vector<checks::Type>>
-    run_stack(std::vector<checks::Type> initial, std::string fname,
-              std::vector<ir::Instruction> fbody);
     void check();
 };
-}; // namespace checks
+} // namespace checks

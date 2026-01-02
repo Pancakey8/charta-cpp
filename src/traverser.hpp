@@ -5,19 +5,13 @@
 #include <cstdint>
 
 namespace traverser {
-struct NativeFn {
+struct Function {
     std::string name;
     parser::Argument args;
     parser::Return rets;
-    std::vector<ir::Instruction> body;
+    std::variant<std::string, std::vector<ir::Instruction>> body;
+    enum Kind { Native, Foreign } kind;
 };
-struct EmbeddedFn {
-    std::string name;
-    parser::Argument args;
-    parser::Return rets;
-    std::string body;
-};
-using Function = std::variant<NativeFn, EmbeddedFn>;
 struct TraverserError : std::exception {
     int x;
     int y;
