@@ -120,11 +120,11 @@ fn test-str-ops () -> (int) {
 }
 
 fn test-apply () -> (int) {
-↓                          2              3                4
-                           ↑              ↑                ↑
-→ 1 ≍ ▷ 2 ≠ ? ≍ 5 ⊼ ▷ 10 ≠ ? 'A' ⊼ ▷ 65 ≠ ? "hey" ↕ ▷ -5 ≠ ? 0
-    ↓       ↓ ↓
-    1       1 → ∈ char = ? ∈ int = ? -5
+↓                          2              3                4                 5     6
+                           ↑              ↑                ↑                 ↑     ↑
+→ 1 ≍ ▷ 2 ≠ ? ≍ 5 ⊼ ▷ 10 ≠ ? 'A' ⊼ ▷ 65 ≠ ? "hey" ↕ ▷ -5 ≠ ? 1 2 3 4 ≍ ⟜ 4 ≠ ? 5 ≠ ? 0
+    ↓       ↓ ↓                                                      ↓
+    1       1 → ∈ char = ? ∈ int = ? -5 ↓                            +
     +                    ↓         ↓
                         ord        2
                                    *
@@ -146,6 +146,6 @@ fn main () -> () {
 →          "type" test-type-info test ↓
 ↓ test test-more-stk-ops "⧺ ⇆ ↙ ↘ ++" ←
 → "str ℓ @ @! . &" test-str-ops test  ↓
-↓                 test test-apply "▷" ←
+↓               test test-apply "⟜ ▷" ←
 → "⩞" test-align-ops-2 test
 }

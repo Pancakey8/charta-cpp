@@ -140,9 +140,10 @@ not implemented as a core function.
 
 These operations apply to function values.
 
-| Name | ASCII | Description                           |
-|:----:|:-----:|:--------------------------------------|
-| `▷`  | `ap`  | Applies function to the entire stack. |
+| Name | ASCII  | Description                                           |
+|:----:|:------:|:------------------------------------------------------|
+| `▷`  | `ap`   | Applies function to the stack.                        |
+| `⟜`  | `tail` | Applies function to the stack skipping the top value. |
 
 ## I/O
 

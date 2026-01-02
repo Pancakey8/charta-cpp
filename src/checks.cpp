@@ -847,17 +847,28 @@ std::optional<std::vector<ir::Instruction>> get_irs(checks::Type const &type) {
         return std::get<std::optional<std::vector<ir::Instruction>>>(type.val);
     }
 }
+
+void ensure(std::vector<checks::Type> const &stack,
+            std::vector<checks::Type> const &args, std::string const fname) {
+    for (auto stk_top = stack.rbegin(), arg_top = args.rbegin();
+         arg_top != args.rend(); ++stk_top, ++arg_top) {
+        if (stk_top == stack.rend()) {
+            throw std::format("'{}' expected '{}', got nothing", fname,
+                              arg_top->show());
+        }
+        if (!is_matching(*stk_top, *arg_top)) {
+            throw std::format("'{}' expected '{}', got '{}'", fname,
+                              arg_top->show(), stk_top->show());
+        }
+    }
+}
+
 checks::Function apply_sig() {
     std::function<void(checks::TypeChecker &, std::vector<checks::Type> &)>
         effect;
     effect = [](checks::TypeChecker &checker,
                 std::vector<checks::Type> &stack) {
-        if (stack.empty() ||
-            !is_matching(stack.back(), tfunction(std::nullopt))) {
-            throw std::format(
-                "'▷' expected 'function', got {}",
-                stack.empty() ? "nothing" : ("'" + stack.back().show() + "'"));
-        }
+        ensure(stack, {tfunction(std::nullopt)}, "▷");
         auto fn = get_irs(stack.back());
         stack.pop_back();
         if (!fn) { // Info loss -- lame
@@ -879,6 +890,25 @@ checks::Function apply_sig() {
             std::println("");
         }
         stack = sum;
+    };
+    return checks::Function(effect);
+}
+
+checks::Function tail_sig() {
+    std::function<void(checks::TypeChecker &, std::vector<checks::Type> &)>
+        effect;
+    effect = [](checks::TypeChecker &checker,
+                std::vector<checks::Type> &stack) {
+        ensure(stack, {tliquid, tfunction(std::nullopt)}, "⟜");
+        checks::Type top;
+        if (stack.back().kind != checks::Type::Many) { // Does this happen?
+            top = *(stack.end() - 2);
+            stack.erase(stack.end() - 2);
+        }
+        (*apply_sig().effect)(checker, stack);
+        if (stack.back().kind != checks::Type::Many) {
+            stack.emplace_back(top);
+        }
     };
     return checks::Function(effect);
 }
@@ -962,7 +992,9 @@ static const std::unordered_map<std::string, std::function<checks::Function()>>
         {"&", funit({{tstring, tstring}, {tstring}})},
         {".", funit({{tchar, tstring}, {tstring}})},
         {"▷", apply_sig},
-        {"ap", apply_sig}};
+        {"ap", apply_sig},
+        {"⟜", tail_sig},
+        {"tail", tail_sig}};
 
 checks::TypeChecker::TypeChecker(std::vector<traverser::Function> fns,
                                  bool show_typechecks)

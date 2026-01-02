@@ -435,11 +435,15 @@ ch_string print_value_str(ch_value v) {
     }
 
     case CH_VALK_OPAQUE: {
-        ch_str_append(&out, "<opaque>");
+        ch_string opaque = ch_str_new("<opaque>");
+        ch_str_append(&out, &opaque);
+        ch_str_delete(&opaque);
     }
 
     case CH_VALK_FUNCTION: {
-        ch_str_append(&out, "<function>");
+        ch_string function = ch_str_new("<function>");
+        ch_str_append(&out, &function);
+        ch_str_delete(&function);
     }
     }
 
@@ -498,8 +502,8 @@ ch_stack_node *_mangle_(pick, "pck")(ch_stack_node **full) {
     ch_stack_node *local = ch_stk_args(full, 3, 0);
     ch_value val = ch_valcpy(local->next->next);
     ch_stk_push(&local, val);
-    return local;    
-}    
+    return local;
+}
 
 ch_stack_node *_mangle_(dbg, "dbg")(ch_stack_node **full) {
     ch_stack_node *elem = *full;
@@ -1210,4 +1214,15 @@ ch_stack_node *_mangle_(fnapply, "ap")(ch_stack_node **full) {
     }
     *full = val.value.fn(full);
     return NULL;
+}
+
+ch_stack_node *_mangle_(fntail, "tail")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 2, 0);
+    ch_value val = ch_stk_pop(&local);
+    if (val.kind != CH_VALK_FUNCTION) {
+        printf("ERR: 'ap' expected function, got %s", ch_valk_name(val.kind));
+        exit(1);
+    }
+    *full = val.value.fn(full);
+    return local;
 }
