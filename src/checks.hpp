@@ -36,24 +36,27 @@ struct Type {
     std::string show() const;
 };
 
+class TypeChecker;
+
 struct Effect {
     virtual ~Effect();
-    virtual void operator()(std::vector<Type> &stack) = 0;
+    virtual void operator()(TypeChecker &checker, std::vector<Type> &stack) = 0;
 };
 
 struct StaticEffect : public Effect {
     std::vector<Type> takes{};
     std::vector<Type> leaves{};
     std::string fname{};
+    bool is_ellipses{false};
     StaticEffect(std::vector<Type> takes, std::vector<Type> leaves,
-                 std::string fname)
+                 std::string fname, bool is_ellipses = false)
         : takes(std::move(takes)), leaves(std::move(leaves)),
-          fname(std::move(fname)) {}
-    virtual void operator()(std::vector<Type> &stack) override;
+          fname(std::move(fname)), is_ellipses(is_ellipses) {}
+    virtual void operator()(TypeChecker &checker,
+                            std::vector<Type> &stack) override;
 };
 
 class TypeChecker {
-    bool show_trace;
     std::unordered_map<std::string, std::shared_ptr<Effect>> signatures{};
     std::unordered_map<std::string,
                        std::pair<std::vector<Type>, std::vector<Type>>>
@@ -67,5 +70,10 @@ class TypeChecker {
                 bool show_trace = false);
 
     void check();
+
+    std::vector<std::vector<Type>>
+    run_stack(std::vector<Type> from, std::string const &name,
+              std::vector<ir::Instruction> const &irs);
+    bool show_trace;
 };
 } // namespace checks

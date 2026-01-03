@@ -13,7 +13,7 @@
     st))
 
 (defconst charta-types
-  '("int" "char" "bool" "string" "stack" "function" "opaque"))
+  '("int" "float" "char" "bool" "string" "stack" "function" "opaque"))
 
 (defconst charta-operators
   '("→" "←" "↑" "↓" "<-" "->" "^|" "|^" "v|" "|v" "?" "≍" "~~"))

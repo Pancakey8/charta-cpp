@@ -1,3 +1,7 @@
+fn foo (x : int y : int ...) -> () {
+→ + print dbg
+}
+
 fn main () -> () {
-→ 3 5.5 'a' ▭ ⊢ ↕ ⊣! ↻ ord +
+→ 1 2 3 4 5 6 foo dbg
 }

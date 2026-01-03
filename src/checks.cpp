@@ -21,6 +21,10 @@ checks::Type tstring() { return checks::Type{checks::Type::String, {}}; }
 
 checks::Type tliquid() { return checks::Type{checks::Type::Liquid, {}}; }
 
+checks::Type tfunction(std::optional<std::vector<ir::Instruction>> irs) {
+    return checks::Type{checks::Type::Function, irs};
+}
+
 checks::Type tbool(std::optional<bool> v) {
     return checks::Type{checks::Type::Bool, v};
 }
@@ -74,16 +78,30 @@ bool stk_equals(std::vector<checks::Type> gstk,
     while (true) {
         if (estk.empty() && gstk.empty())
             return true;
-        else if (estk.empty() || gstk.empty())
+        if (gstk.empty() && estk.back().kind == checks::Type::Many) {
+            estk.pop_back();
+            continue;
+        }
+        if (estk.empty() && gstk.back().kind == checks::Type::Many) {
+            gstk.pop_back();
+            continue;
+        }
+        if (estk.empty() || gstk.empty())
             return false;
-
         if (!is_matching(gstk.back(), estk.back()))
             return false;
-
         if (gstk.back().kind == checks::Type::Many &&
             estk.back().kind == checks::Type::Many) {
+            auto gtop = gstk.back();
+            auto etop = gstk.back();
             gstk.pop_back();
             estk.pop_back();
+            while (!estk.empty() && is_matching(gtop, estk.back())) {
+                estk.pop_back();
+            }
+            while (!gstk.empty() && is_matching(gstk.back(), etop)) {
+                gstk.pop_back();
+            }
         } else {
             stack_pop(gstk);
             stack_pop(estk);
@@ -230,6 +248,121 @@ bool unify(std::vector<checks::Type> &prev,
     return true;
 }
 
+std::vector<std::vector<checks::Type>>
+checks::TypeChecker::run_stack(std::vector<checks::Type> from,
+                               std::string const &name,
+                               std::vector<ir::Instruction> const &irs) {
+    std::vector<State> states{State{0, from}};
+    std::unordered_map<int, std::vector<Type>> visited{};
+    std::vector<std::vector<checks::Type>> exits{};
+
+    while (!states.empty()) {
+        auto &state = states.back();
+
+        if (visited.contains(state.ip)) {
+            if (!unify(visited.at(state.ip), state.stack)) {
+                if (show_trace) {
+                    std::println("Converged : {}",
+                                 show_stack(visited.at(state.ip)));
+                }
+                states.pop_back();
+                continue;
+            }
+        }
+
+        auto instr = irs[state.ip];
+        if (show_trace) {
+            std::println("On : {}", instr.show());
+            std::println("States : {} | Stack : {}", states.size(),
+                         show_stack(state.stack));
+        }
+        switch (instr.kind) {
+        case ir::Instruction::PushInt:
+            state.stack.emplace_back(Type{Type::Int, {}});
+            ++state.ip;
+            break;
+        case ir::Instruction::PushFloat:
+            state.stack.emplace_back(Type{Type::Float, {}});
+            ++state.ip;
+            break;
+        case ir::Instruction::PushChar:
+            state.stack.emplace_back(Type{Type::Char, {}});
+            ++state.ip;
+            break;
+        case ir::Instruction::PushStr:
+            state.stack.emplace_back(Type{Type::String, {}});
+            ++state.ip;
+            break;
+        case ir::Instruction::PushBool:
+            state.stack.emplace_back(Type{
+                Type::Bool, std::optional<bool>{std::get<bool>(instr.value)}});
+            ++state.ip;
+            break;
+        case ir::Instruction::Call: {
+            auto callee = std::get<std::string>(instr.value);
+            if (!signatures.contains(callee))
+                throw CheckError(name,
+                                 "Call to undefined function '" + callee + "'");
+            (*signatures[callee])(*this, state.stack);
+            ++state.ip;
+            break;
+        }
+        case ir::Instruction::JumpTrue: {
+            auto label = std::get<std::string>(instr.value);
+            if (state.stack.empty())
+                throw CheckError(name, "Branch expected 'bool', got nothing");
+            if (!is_matching(state.stack.back(), tbool({}))) {
+                throw CheckError(name,
+                                 std::format("Branch expected 'bool', got '{}'",
+                                             state.stack.back().show()));
+            }
+            auto t = stack_pop(state.stack);
+            if (t->kind == Type::Bool) {
+                auto b = std::get<std::optional<bool>>(t->value);
+                if (b && *b) {
+                    state.ip = to_label(irs, label);
+                    break;
+                } else if (b && !*b) {
+                    ++state.ip;
+                    break;
+                }
+            }
+            ++state.ip;
+            states.emplace_back(State{to_label(irs, label), state.stack});
+            break;
+        }
+        case ir::Instruction::Goto:
+            state.ip = to_label(irs, std::get<std::string>(instr.value));
+            break;
+        case ir::Instruction::Label:
+            if (!visited.contains(state.ip)) {
+                visited[state.ip] = state.stack;
+            }
+            ++state.ip;
+            break;
+        case ir::Instruction::Exit: {
+            exits.emplace_back(state.stack);
+            states.pop_back();
+            break;
+        }
+        case ir::Instruction::Subroutine: {
+            state.stack.emplace_back(
+                Type{Type::Function,
+                     std::optional{
+                         std::get<std::vector<ir::Instruction>>(instr.value)}});
+            ++state.ip;
+            break;
+        }
+        case ir::Instruction::GotoPos:
+        case ir::Instruction::LabelPos:
+            assert(false && "Unreachable in type checking");
+            break;
+        }
+    }
+
+    return exits;
+}
+
 void checks::TypeChecker::check() {
     for (auto &[name, decl] : decls) {
         if (decl.kind != traverser::Function::Native)
@@ -241,123 +374,22 @@ void checks::TypeChecker::check() {
         }
         auto irs = std::get<std::vector<ir::Instruction>>(decl.body);
         auto [from, to] = expectations[name];
-        std::vector<State> states{State{0, from}};
-        std::unordered_map<int, std::vector<Type>> visited{};
-        while (!states.empty()) {
-            auto &state = states.back();
-
-            if (visited.contains(state.ip)) {
-                if (!unify(visited.at(state.ip), state.stack)) {
-                    if (show_trace) {
-                        std::println("Converged : {}",
-                                     show_stack(visited.at(state.ip)));
-                    }
-                    states.pop_back();
-                    continue;
-                }
-            }
-
-            auto instr = irs[state.ip];
-            if (show_trace) {
-                std::println("On : {}", instr.show());
-                std::println("States : {} | Stack : {}", states.size(),
-                             show_stack(state.stack));
-            }
-            switch (instr.kind) {
-            case ir::Instruction::PushInt:
-                state.stack.emplace_back(Type{Type::Int, {}});
-                ++state.ip;
-                break;
-            case ir::Instruction::PushFloat:
-                state.stack.emplace_back(Type{Type::Float, {}});
-                ++state.ip;
-                break;
-            case ir::Instruction::PushChar:
-                state.stack.emplace_back(Type{Type::Char, {}});
-                ++state.ip;
-                break;
-            case ir::Instruction::PushStr:
-                state.stack.emplace_back(Type{Type::String, {}});
-                ++state.ip;
-                break;
-            case ir::Instruction::PushBool:
-                state.stack.emplace_back(
-                    Type{Type::Bool,
-                         std::optional<bool>{std::get<bool>(instr.value)}});
-                ++state.ip;
-                break;
-            case ir::Instruction::Call: {
-                auto callee = std::get<std::string>(instr.value);
-                if (!signatures.contains(callee))
-                    throw CheckError(name, "Call to undefined function '" +
-                                               callee + "'");
-                (*signatures[callee])(state.stack);
-                ++state.ip;
-                break;
-            }
-            case ir::Instruction::JumpTrue: {
-                auto label = std::get<std::string>(instr.value);
-                if (state.stack.empty())
-                    throw CheckError(name,
-                                     "Branch expected 'bool', got nothing");
-                if (!is_matching(state.stack.back(), tbool({}))) {
+        if (decl.args.kind == parser::Argument::Ellipses) {
+            from.insert(from.begin(), tstack(std::nullopt));
+        }
+        auto exits = run_stack(from, name, irs);
+        for (auto &stack : exits) {
+            for (auto ret = to.rbegin(); ret != to.rend(); ++ret) {
+                if (stack.empty())
                     throw CheckError(
-                        name, std::format("Branch expected 'bool', got '{}'",
-                                          state.stack.back().show()));
-                }
-                auto t = stack_pop(state.stack);
-                if (t->kind == Type::Bool) {
-                    auto b = std::get<std::optional<bool>>(t->value);
-                    if (b && *b) {
-                        state.ip = to_label(irs, label);
-                        break;
-                    } else if (b && !*b) {
-                        ++state.ip;
-                        break;
-                    }
-                }
-                ++state.ip;
-                states.emplace_back(State{to_label(irs, label), state.stack});
-                break;
-            }
-            case ir::Instruction::Goto:
-                state.ip = to_label(irs, std::get<std::string>(instr.value));
-                break;
-            case ir::Instruction::Label:
-                if (!visited.contains(state.ip)) {
-                    visited[state.ip] = state.stack;
-                }
-                ++state.ip;
-                break;
-            case ir::Instruction::Exit: {
-                for (auto ret = to.rbegin(); ret != to.rend(); ++ret) {
-                    if (state.stack.empty())
-                        throw CheckError(
-                            name,
-                            std::format("Expected to return '{}', got nothing",
-                                        ret->show()));
-                    if (!is_matching(state.stack.back(), *ret))
-                        throw CheckError(
-                            name, std::format(
-                                      "Expected to return '{}', got '{}'",
-                                      ret->show(), state.stack.back().show()));
-                    stack_pop(state.stack);
-                }
-                states.pop_back();
-                break;
-            }
-            case ir::Instruction::Subroutine: {
-                state.stack.emplace_back(
-                    Type{Type::Function,
-                         std::optional{std::get<std::vector<ir::Instruction>>(
-                             instr.value)}});
-                ++state.ip;
-                break;
-            }
-            case ir::Instruction::GotoPos:
-            case ir::Instruction::LabelPos:
-                assert(false && "Unreachable in type checking");
-                break;
+                        name,
+                        std::format("Expected to return '{}', got nothing",
+                                    ret->show()));
+                if (!is_matching(stack.back(), *ret))
+                    throw CheckError(
+                        name, std::format("Expected to return '{}', got '{}'",
+                                          ret->show(), stack.back().show()));
+                stack_pop(stack);
             }
         }
     }
@@ -410,15 +442,13 @@ checks::Type sig2type(parser::TypeSig arg,
     }
 
     if (arg.is_stack) {
-        t = checks::Type{
-            checks::Type::Stack,
-            std::vector<checks::Type>{checks::Type{
-                checks::Type::Many, std::make_shared<checks::Type>(t)}}};
+        t = tstack(std::vector<checks::Type>{checks::Type{
+            checks::Type::Many, std::make_shared<checks::Type>(t)}});
     }
     return t;
 }
 
-void checks::StaticEffect::operator()(std::vector<Type> &stack) {
+void checks::StaticEffect::operator()(TypeChecker &, std::vector<Type> &stack) {
     auto takes_now = takes;
     auto leaves_now = leaves;
     for (auto expect = takes_now.rbegin(); expect != takes_now.rend();
@@ -446,6 +476,9 @@ void checks::StaticEffect::operator()(std::vector<Type> &stack) {
         }
 
         stack_pop(stack);
+    }
+    if (is_ellipses) {
+        stack.clear();
     }
     for (auto &t : leaves_now) {
         if (t.kind == Type::Generic)
@@ -511,7 +544,8 @@ std::vector<checks::Type> ensure(std::vector<checks::Type> &stack,
 struct ArithmEffect : public checks::Effect {
     std::string fname{};
     ArithmEffect(std::string fname) : fname(std::move(fname)) {}
-    virtual void operator()(std::vector<checks::Type> &stack) override {
+    virtual void operator()(checks::TypeChecker &,
+                            std::vector<checks::Type> &stack) override {
         enum { Int, Float } first, second;
 
         if (stack.empty())
@@ -549,7 +583,8 @@ struct ArithmEffect : public checks::Effect {
 struct CompEffect : public checks::Effect {
     std::string fname{};
     CompEffect(std::string fname) : fname(std::move(fname)) {}
-    virtual void operator()(std::vector<checks::Type> &stack) override {
+    virtual void operator()(checks::TypeChecker &,
+                            std::vector<checks::Type> &stack) override {
         ensure(stack, {tunion({tint(), tfloat()}), tunion({tint(), tfloat()})},
                fname);
 
@@ -560,7 +595,8 @@ struct CompEffect : public checks::Effect {
 struct EqualEffect : public checks::Effect {
     std::string fname{};
     EqualEffect(std::string fname) : fname(std::move(fname)) {}
-    virtual void operator()(std::vector<checks::Type> &stack) override {
+    virtual void operator()(checks::TypeChecker &,
+                            std::vector<checks::Type> &stack) override {
         if (!stack_pop(stack) || !stack_pop(stack)) {
             throw checks::CheckError(fname, "Expected any, got nothing");
         }
@@ -571,7 +607,8 @@ struct EqualEffect : public checks::Effect {
 struct AndEffect : public checks::Effect {
     std::string fname{};
     AndEffect(std::string fname) : fname(std::move(fname)) {}
-    virtual void operator()(std::vector<checks::Type> &stack) override {
+    virtual void operator()(checks::TypeChecker &,
+                            std::vector<checks::Type> &stack) override {
         std::optional<bool> right, left;
         if (auto p = stack_pop(stack); p && p->kind == checks::Type::Bool) {
             right = std::get<std::optional<bool>>(p->value);
@@ -602,7 +639,8 @@ struct AndEffect : public checks::Effect {
 struct OrEffect : public checks::Effect {
     std::string fname{};
     OrEffect(std::string fname) : fname(std::move(fname)) {}
-    virtual void operator()(std::vector<checks::Type> &stack) override {
+    virtual void operator()(checks::TypeChecker &,
+                            std::vector<checks::Type> &stack) override {
         std::optional<bool> right, left;
         if (auto p = stack_pop(stack); p && p->kind == checks::Type::Bool) {
             right = std::get<std::optional<bool>>(p->value);
@@ -633,7 +671,8 @@ struct OrEffect : public checks::Effect {
 struct NotEffect : public checks::Effect {
     std::string fname{};
     NotEffect(std::string fname) : fname(std::move(fname)) {}
-    virtual void operator()(std::vector<checks::Type> &stack) override {
+    virtual void operator()(checks::TypeChecker &,
+                            std::vector<checks::Type> &stack) override {
         if (auto p = stack_pop(stack); p && p->kind == checks::Type::Bool) {
             auto val = std::get<std::optional<bool>>(p->value);
             if (val) {
@@ -651,14 +690,16 @@ struct NotEffect : public checks::Effect {
 };
 
 struct BoxEffect : public checks::Effect {
-    virtual void operator()(std::vector<checks::Type> &stack) override {
+    virtual void operator()(checks::TypeChecker &,
+                            std::vector<checks::Type> &stack) override {
         checks::Type t = tstack(stack);
         stack = std::vector<checks::Type>{t};
     }
 };
 
 struct InsEffect : public checks::Effect {
-    virtual void operator()(std::vector<checks::Type> &stack) override {
+    virtual void operator()(checks::TypeChecker &,
+                            std::vector<checks::Type> &stack) override {
         auto args = ensure(stack, {tstack({}), tliquid()}, "ins");
         auto &stk = args.back();
         if (stk.kind == checks::Type::Stack)
@@ -676,8 +717,9 @@ struct FetchEffect : public checks::Effect {
     std::string fname;
     FetchEffect(bool is_top, bool is_pop, std::string fname)
         : is_top(is_top), is_pop(is_pop), fname(fname) {}
-    virtual void operator()(std::vector<checks::Type> &stack) override {
-        auto args = ensure(stack, {tstack({})}, "fname");
+    virtual void operator()(checks::TypeChecker &,
+                            std::vector<checks::Type> &stack) override {
+        auto args = ensure(stack, {tstack({})}, fname);
         auto &stk = args.back();
         if (stk.kind == checks::Type::Stack)
             if (auto &val = std::get<std::optional<std::vector<checks::Type>>>(
@@ -702,6 +744,148 @@ struct FetchEffect : public checks::Effect {
             }
         stack.emplace_back(stk);
         stack.emplace_back(tliquid());
+    }
+};
+
+struct ConcatEffect : public checks::Effect {
+    virtual void operator()(checks::TypeChecker &,
+                            std::vector<checks::Type> &stack) override {
+        auto args = ensure(stack, {tstack({}), tstack({})}, "++");
+        auto left = args.back();
+        auto right = args.front();
+        if (left.kind != checks::Type::Stack ||
+            right.kind != checks::Type::Stack) {
+            stack.emplace_back(tstack({}));
+            return;
+        }
+        if (auto lval =
+                std::get<std::optional<std::vector<checks::Type>>>(left.value),
+            rval =
+                std::get<std::optional<std::vector<checks::Type>>>(right.value);
+            lval && rval) {
+            std::vector next{*rval};
+            next.insert(next.end(), lval->begin(), lval->end());
+            stack.emplace_back(tstack(next));
+            return;
+        }
+        stack.emplace_back(tstack({}));
+    }
+};
+
+struct LenEffect : public checks::Effect {
+    virtual void operator()(checks::TypeChecker &,
+                            std::vector<checks::Type> &stack) override {
+        auto stk = ensure(stack, {tstack({})}, "len");
+        stack.emplace_back(stk.front());
+        stack.emplace_back(tint());
+    }
+};
+
+struct RevEffect : public checks::Effect {
+    virtual void operator()(checks::TypeChecker &,
+                            std::vector<checks::Type> &stack) override {
+        auto stk = ensure(stack, {tstack({})}, "rev");
+        if (stk.front().kind == checks::Type::Stack)
+            if (auto val = std::get<std::optional<std::vector<checks::Type>>>(
+                    stk.front().value)) {
+                stack.emplace_back(
+                    tstack(std::vector(val->rbegin(), val->rend())));
+                return;
+            }
+        stack.emplace_back(stk.front());
+    }
+};
+
+struct ApplyEffect : public checks::Effect {
+    virtual void operator()(checks::TypeChecker &checker,
+                            std::vector<checks::Type> &stack) override {
+        auto stk = ensure(stack, {tfunction({})}, "ap");
+        if (auto body =
+                std::get_if<std::optional<std::vector<ir::Instruction>>>(
+                    &stk.front().value);
+            stk.front().kind == checks::Type::Function && *body) {
+            auto exits = checker.run_stack(stack, "ap", **body);
+            auto prev = exits.begin();
+            for (auto now = exits.begin() + 1; now != exits.end();
+                 ++now, ++prev) {
+                if (!stk_equals(*now, *prev)) {
+                    throw checks::CheckError(
+                        "ap", std::format("Subroutine results in mismatched "
+                                          "returns '{}' and '{}'",
+                                          show_stack(*prev), show_stack(*now)));
+                }
+            }
+            stack = exits.front();
+        } else {
+            stack.emplace_back(tmany(tliquid()));
+        }
+    }
+};
+
+struct TailEffect : public checks::Effect {
+    virtual void operator()(checks::TypeChecker &checker,
+                            std::vector<checks::Type> &stack) override {
+        auto stk = ensure(stack, {tliquid(), tfunction({})}, "tail");
+        if (auto body =
+                std::get_if<std::optional<std::vector<ir::Instruction>>>(
+                    &stk.front().value);
+            stk.front().kind == checks::Type::Function && *body) {
+            auto exits = checker.run_stack(stack, "tail", **body);
+            auto prev = exits.begin();
+            for (auto now = exits.begin() + 1; now != exits.end();
+                 ++now, ++prev) {
+                if (!stk_equals(*now, *prev)) {
+                    throw checks::CheckError(
+                        "tail",
+                        std::format("Subroutine results in mismatched "
+                                    "returns '{}' and '{}'",
+                                    show_stack(*prev), show_stack(*now)));
+                }
+            }
+            stack = exits.front();
+            stack.emplace_back(stk.back());
+        } else {
+            stack.emplace_back(tmany(tliquid()));
+        }
+    }
+};
+
+void run_instructions(checks::TypeChecker &checker,
+                      std::vector<checks::Type> &stack, std::string name,
+                      std::vector<ir::Instruction> body) {
+    auto exits = checker.run_stack(stack, name, body);
+    auto prev = exits.begin();
+    for (auto now = exits.begin() + 1; now != exits.end(); ++now, ++prev) {
+        if (!stk_equals(*now, *prev)) {
+            throw checks::CheckError(
+                name, std::format("Subroutine results in mismatched "
+                                  "returns '{}' and '{}'",
+                                  show_stack(*prev), show_stack(*now)));
+        }
+    }
+    stack = exits.front();
+}
+
+struct RepeatEffect : public checks::Effect {
+    virtual void operator()(checks::TypeChecker &checker,
+                            std::vector<checks::Type> &stack) override {
+        auto stk = ensure(stack, {tfunction({}), tint()}, "repeat");
+        if (auto body =
+                std::get_if<std::optional<std::vector<ir::Instruction>>>(
+                    &stk.back().value);
+            stk.back().kind == checks::Type::Function && *body) {
+            auto prev_stack = stack;
+            run_instructions(checker, stack, "repeat", **body);
+            while (unify(prev_stack, stack)) {
+                prev_stack = stack;
+                run_instructions(checker, stack, "repeat", **body);
+            }
+            if (checker.show_trace) {
+                std::println("Converged : {}", show_stack(prev_stack));
+            }
+        } else {
+            stack.emplace_back(tmany(tliquid()));
+        }
     }
 };
 
@@ -751,9 +935,8 @@ static std::shared_ptr<checks::StaticEffect> const rotr_eff = [] {
 
 static std::shared_ptr<checks::StaticEffect> const pop_eff = [] {
     auto a = tgeneric(generic_id());
-    auto b = tgeneric(generic_id());
     return std::make_shared<checks::StaticEffect>(
-        checks::StaticEffect{{a, b}, {a}, "pop"});
+        checks::StaticEffect{{a}, {}, "pop"});
 }();
 
 static std::shared_ptr<checks::StaticEffect> const dpt_eff =
@@ -829,7 +1012,44 @@ static std::unordered_map<std::string,
     {"lst", std::make_shared<FetchEffect>(FetchEffect{false, false, "lst"})},
     {"⊣", std::make_shared<FetchEffect>(FetchEffect{false, false, "⊣"})},
     {"lst!", std::make_shared<FetchEffect>(FetchEffect{false, true, "lst!"})},
-    {"⊣!", std::make_shared<FetchEffect>(FetchEffect{false, true, "⊣!"})}};
+    {"⊣!", std::make_shared<FetchEffect>(FetchEffect{false, true, "⊣!"})},
+    {"++", std::make_shared<ConcatEffect>(ConcatEffect{})},
+    {"⧺", std::make_shared<LenEffect>(LenEffect{})},
+    {"len", std::make_shared<LenEffect>(LenEffect{})},
+    {"take", std::make_shared<checks::StaticEffect>(checks::StaticEffect{
+                 {tstack({}), tint()}, {tstack({}), tstack({})}, "take"})},
+    {"↙", std::make_shared<checks::StaticEffect>(checks::StaticEffect{
+              {tstack({}), tint()}, {tstack({}), tstack({})}, "↙"})},
+    {"drop", std::make_shared<checks::StaticEffect>(checks::StaticEffect{
+                 {tstack({}), tint()}, {tstack({})}, "drop"})},
+    {"↘", std::make_shared<checks::StaticEffect>(
+              checks::StaticEffect{{tstack({}), tint()}, {tstack({})}, "↘"})},
+    {"rev", std::make_shared<RevEffect>(RevEffect{})},
+    {"⇆", std::make_shared<RevEffect>(RevEffect{})},
+    {"str", std::make_shared<checks::StaticEffect>(
+                checks::StaticEffect({tliquid()}, {tstring()}, "str"))},
+    {"slen", std::make_shared<checks::StaticEffect>(checks::StaticEffect(
+                 {tstring()}, {tstring(), tint()}, "slen"))},
+    {"ℓ", std::make_shared<checks::StaticEffect>(
+              checks::StaticEffect({tstring()}, {tstring(), tint()}, "ℓ"))},
+    {"@", std::make_shared<checks::StaticEffect>(checks::StaticEffect(
+              {tstring(), tint()}, {tstring(), tchar()}, "@"))},
+    {"@!", std::make_shared<checks::StaticEffect>(checks::StaticEffect(
+               {tstring(), tchar(), tint()}, {tstring()}, "@!"))},
+    {"&", std::make_shared<checks::StaticEffect>(
+              checks::StaticEffect({tstring(), tstring()}, {tstring()}, "&"))},
+    {".", std::make_shared<checks::StaticEffect>(
+              checks::StaticEffect({tstring(), tchar()}, {tstring()}, "."))},
+    {"▷", std::make_shared<ApplyEffect>(ApplyEffect{})},
+    {"ap", std::make_shared<ApplyEffect>(ApplyEffect{})},
+    {"⟜", std::make_shared<TailEffect>(TailEffect{})},
+    {"tail", std::make_shared<TailEffect>(TailEffect{})},
+    {"⋄", std::make_shared<RepeatEffect>(RepeatEffect{})},
+    {"repeat", std::make_shared<RepeatEffect>(RepeatEffect{})},
+    {"dbg", std::make_shared<checks::StaticEffect>(
+                checks::StaticEffect{{}, {}, "dbg"})},
+    {"print", std::make_shared<checks::StaticEffect>(
+                  checks::StaticEffect{{tliquid()}, {}, "print"})}};
 
 void checks::TypeChecker::collect_signatures() {
     signatures = builtins;
@@ -840,19 +1060,21 @@ void checks::TypeChecker::collect_signatures() {
             takes.emplace_back(sig2type(arg, generics));
         }
         std::vector<Type> leaves{};
-        if (func.rets.rest) {
-            leaves.emplace_back(Type{
-                Type::Many,
-                std::make_shared<Type>(sig2type(*func.rets.rest, generics))});
-        }
         for (auto &arg : func.rets.args) {
             leaves.emplace_back(sig2type(arg, generics));
         }
         std::reverse(takes.begin(), takes.end());
         std::reverse(leaves.begin(), leaves.end());
-        signatures.emplace(fname, std::make_shared<StaticEffect>(
-                                      StaticEffect{takes, leaves, fname}));
         expectations.emplace(fname, std::make_pair(takes, leaves));
+        if (func.rets.rest) {
+            leaves.insert(leaves.begin(),
+                          tstack(std::vector<Type>{
+                              tmany(sig2type(*func.rets.rest, generics))}));
+        }
+        signatures.emplace(fname,
+                           std::make_shared<StaticEffect>(StaticEffect{
+                               takes, leaves, fname,
+                               func.args.kind == parser::Argument::Ellipses}));
         if (show_trace) {
             std::println("fn {} :: {} -> {}", fname, show_stack(takes),
                          show_stack(leaves));

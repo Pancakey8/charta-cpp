@@ -225,7 +225,14 @@ std::string backend::c::make_c(Program prog,
                 full += "ch_stack_node *__istack = ch_stk_new();\n";
                 full += "ch_stk_append(&__istack, *__ifull);\n";
                 full += "*__ifull = NULL;\n";
-                emit_native(fn, full, true);
+                emit_native(
+                    traverser::Function{
+                        fname,
+                        {},
+                        {},
+                        std::get<std::vector<ir::Instruction>>(ir.value),
+                        traverser::Function::Native},
+                    full, true);
                 full += "}\n";
             }
         }
