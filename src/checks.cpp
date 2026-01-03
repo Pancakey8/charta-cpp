@@ -10,6 +10,7 @@
 #include <print>
 #include <ranges>
 #include <unordered_map>
+#include <unordered_set>
 
 checks::Type tint() { return checks::Type{checks::Type::Int, {}}; }
 
@@ -449,6 +450,15 @@ checks::Type sig2type(parser::TypeSig arg,
 }
 
 void checks::StaticEffect::operator()(TypeChecker &, std::vector<Type> &stack) {
+    std::unordered_set<int> our_generics{};
+    for (auto &type : takes) {
+        if (type.kind == Type::Generic)
+            our_generics.insert(std::get<int>(type.value));
+    }
+    for (auto &type : leaves) {
+        if (type.kind == Type::Generic)
+            our_generics.insert(std::get<int>(type.value));
+    }
     auto takes_now = takes;
     auto leaves_now = leaves;
     for (auto expect = takes_now.rbegin(); expect != takes_now.rend();
@@ -481,7 +491,8 @@ void checks::StaticEffect::operator()(TypeChecker &, std::vector<Type> &stack) {
         stack.clear();
     }
     for (auto &t : leaves_now) {
-        if (t.kind == Type::Generic)
+        if (t.kind == Type::Generic &&
+            our_generics.contains(std::get<int>(t.value)))
             throw CheckError(fname, std::format("Unresolved generic '{}'",
                                                 std::get<int>(t.value)));
     }
