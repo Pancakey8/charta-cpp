@@ -8,7 +8,24 @@
 #include <memory>
 #include <optional>
 #include <print>
+#include <ranges>
 #include <unordered_map>
+
+checks::Type tint() { return checks::Type{checks::Type::Int, {}}; }
+
+checks::Type tfloat() { return checks::Type{checks::Type::Float, {}}; }
+
+checks::Type tchar() { return checks::Type{checks::Type::Char, {}}; }
+
+checks::Type tstring() { return checks::Type{checks::Type::String, {}}; }
+
+checks::Type tbool(std::optional<bool> v) {
+    return checks::Type{checks::Type::Bool, v};
+}
+
+checks::Type tgeneric(int id) {
+    return checks::Type{checks::Type::Generic, id};
+}
 
 std::string show_stack(std::vector<checks::Type> const &stk) {
     if (stk.empty())
@@ -88,6 +105,16 @@ struct State {
     std::vector<checks::Type> stack;
 };
 
+size_t to_label(std::vector<ir::Instruction> const &prog,
+                std::string const &label) {
+    for (auto [i, instr] : prog | std::ranges::views::enumerate) {
+        if (instr.kind == ir::Instruction::Label &&
+            std::get<std::string>(instr.value) == label)
+            return i;
+    }
+    return -1;
+}
+
 void checks::TypeChecker::check() {
     for (auto &[name, decl] : decls) {
         if (decl.kind != traverser::Function::Native)
@@ -140,11 +167,36 @@ void checks::TypeChecker::check() {
                 ++state.ip;
                 break;
             }
-            case ir::Instruction::JumpTrue:
+            case ir::Instruction::JumpTrue: {
+                auto label = std::get<std::string>(instr.value);
+                if (state.stack.empty())
+                    throw CheckError(name,
+                                     "Branch expected 'bool', got nothing");
+                if (!is_matching(state.stack.back(), tbool({}))) {
+                    throw CheckError(
+                        name, std::format("Branch expected 'bool', got '{}'",
+                                          state.stack.back().show()));
+                }
+                auto t = stack_pop(state.stack);
+                if (t->kind == Type::Bool) {
+                    auto b = std::get<std::optional<bool>>(t->value);
+                    if (b && *b) {
+                        state.ip = to_label(irs, label);
+                        break;
+                    } else if (b && !*b) {
+                        ++state.ip;
+                        break;
+                    }
+                }
+                ++state.ip;
+                states.emplace_back(State{to_label(irs, label), state.stack});
                 break;
+            }
             case ir::Instruction::Goto:
+                state.ip = to_label(irs, std::get<std::string>(instr.value));
                 break;
             case ir::Instruction::Label:
+                ++state.ip;
                 break;
             case ir::Instruction::Exit: {
                 for (auto ret = to.rbegin(); ret != to.rend(); ++ret) {
@@ -243,20 +295,17 @@ void checks::StaticEffect::operator()(std::vector<Type> &stack) {
 
         auto &got = stack.back();
         if (expect->kind == Type::Generic) {
-            Type type = *expect;
             int id = std::get<int>(expect->value);
-            size_t idx = std::distance(expect, takes.rbegin());
             for (auto &t : takes) {
                 if (t.kind == Type::Generic && std::get<int>(t.value) == id) {
-                    t = type;
+                    t = got;
                 }
             }
             for (auto &t : leaves) {
                 if (t.kind == Type::Generic && std::get<int>(t.value) == id) {
-                    t = type;
+                    t = got;
                 }
             }
-            expect = takes.rbegin() + idx;
         } else if (!is_matching(got, *expect)) {
             throw CheckError(fname, std::format("Expected '{}', got '{}'",
                                                 expect->show(), got.show()));
@@ -304,16 +353,6 @@ std::string checks::Type::show() const {
     }
 }
 
-checks::Type tint() { return checks::Type{checks::Type::Int, {}}; }
-
-checks::Type tfloat() { return checks::Type{checks::Type::Float, {}}; }
-
-checks::Type tchar() { return checks::Type{checks::Type::Char, {}}; }
-
-checks::Type tbool(std::optional<bool> v) {
-    return checks::Type{checks::Type::Bool, v};
-}
-
 struct ArithmEffect : public checks::Effect {
     std::string fname{};
     ArithmEffect(std::string fname) : fname(std::move(fname)) {}
@@ -352,12 +391,29 @@ struct ArithmEffect : public checks::Effect {
     }
 };
 
+static std::shared_ptr<checks::StaticEffect> const swap_eff = [] {
+    auto a = tgeneric(generic_id());
+    auto b = tgeneric(generic_id());
+    return std::make_shared<checks::StaticEffect>(
+        checks::StaticEffect{{a, b}, {b, a}, "swp"});
+}();
+
+static std::shared_ptr<checks::StaticEffect> const dup_eff = [] {
+    auto a = tgeneric(generic_id());
+    return std::make_shared<checks::StaticEffect>(
+        checks::StaticEffect{{a}, {a, a}, "dup"});
+}();
+
 static std::unordered_map<std::string, std::shared_ptr<checks::Effect>> const
     builtins{{"+", std::make_shared<ArithmEffect>(ArithmEffect{"+"})},
              {"-", std::make_shared<ArithmEffect>(ArithmEffect{"-"})},
              {"*", std::make_shared<ArithmEffect>(ArithmEffect{"*"})},
              {"/", std::make_shared<ArithmEffect>(ArithmEffect{"/"})},
-             {"%", std::make_shared<ArithmEffect>(ArithmEffect{"%"})}};
+             {"%", std::make_shared<ArithmEffect>(ArithmEffect{"%"})},
+             {"↕", swap_eff},
+             {"swp", swap_eff},
+             {"⇈", dup_eff},
+             {"dup", dup_eff}};
 
 void checks::TypeChecker::collect_signatures() {
     signatures = builtins;

@@ -1,4 +1,6 @@
-fn foo (x : int) -> (int) {
-→ 3 +
+fn foo (x : bool) -> (int) {
+→ '⊤ ? 3 7 +
+     ↓
+    'a' 
 }
 
