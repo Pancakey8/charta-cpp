@@ -27,6 +27,14 @@ checks::Type tgeneric(int id) {
     return checks::Type{checks::Type::Generic, id};
 }
 
+checks::Type tunion(std::vector<checks::Type> ts) {
+    return checks::Type{checks::Type::Union, std::move(ts)};
+}
+
+checks::Type tmany(checks::Type t) {
+    return checks::Type{checks::Type::Many, std::make_shared<checks::Type>(t)};
+}
+
 std::string show_stack(std::vector<checks::Type> const &stk) {
     if (stk.empty())
         return "[]";
@@ -53,6 +61,30 @@ std::optional<checks::Type> stack_pop(std::vector<checks::Type> &stack) {
     return type;
 }
 
+bool is_matching(checks::Type const &got, checks::Type const &expect);
+
+bool stk_equals(std::vector<checks::Type> gstk,
+                std::vector<checks::Type> estk) {
+    while (true) {
+        if (estk.empty() && gstk.empty())
+            return true;
+        else if (estk.empty() || gstk.empty())
+            return false;
+
+        if (!is_matching(gstk.back(), estk.back()))
+            return false;
+
+        if (gstk.back().kind == checks::Type::Many &&
+            estk.back().kind == checks::Type::Many) {
+            gstk.pop_back();
+            estk.pop_back();
+        } else {
+            stack_pop(gstk);
+            stack_pop(estk);
+        }
+    }
+}
+
 bool is_matching(checks::Type const &got, checks::Type const &expect) {
     if (got.kind == checks::Type::Generic &&
         expect.kind == checks::Type::Generic) {
@@ -70,6 +102,22 @@ bool is_matching(checks::Type const &got, checks::Type const &expect) {
             got, *std::get<std::shared_ptr<checks::Type>>(expect.value));
     }
 
+    if (got.kind == checks::Type::Union) {
+        auto opts = std::get<std::vector<checks::Type>>(got.value);
+        for (auto &o : opts) {
+            if (is_matching(o, expect))
+                return true;
+        }
+        return false;
+    } else if (expect.kind == checks::Type::Union) {
+        auto opts = std::get<std::vector<checks::Type>>(expect.value);
+        for (auto &o : opts) {
+            if (is_matching(got, o))
+                return true;
+        }
+        return false;
+    }
+
     if (expect.kind == checks::Type::Stack && got.kind == checks::Type::Stack) {
         auto gstk =
             std::get<std::optional<std::vector<checks::Type>>>(got.value);
@@ -77,24 +125,7 @@ bool is_matching(checks::Type const &got, checks::Type const &expect) {
             std::get<std::optional<std::vector<checks::Type>>>(expect.value);
         if (!gstk || !estk)
             return true;
-        while (true) {
-            if (estk->empty() && gstk->empty())
-                return true;
-            else if (estk->empty() || gstk->empty())
-                return false;
-
-            if (!is_matching(gstk->back(), estk->back()))
-                return false;
-
-            if (gstk->back().kind == checks::Type::Many &&
-                estk->back().kind == checks::Type::Many) {
-                gstk->pop_back();
-                estk->pop_back();
-            } else {
-                stack_pop(*gstk);
-                stack_pop(*estk);
-            }
-        }
+        return stk_equals(*gstk, *estk);
     }
 
     return got.kind == expect.kind;
@@ -115,6 +146,81 @@ size_t to_label(std::vector<ir::Instruction> const &prog,
     return -1;
 }
 
+checks::Type collapse_union(std::vector<checks::Type> const &types) {
+    std::vector<checks::Type> elems{};
+
+    std::function<void(checks::Type const &)> collect =
+        [&elems, &collect](checks::Type const &t) {
+            if (t.kind == checks::Type::Union) {
+                for (auto &u : std::get<std::vector<checks::Type>>(t.value)) {
+                    collect(u);
+                }
+            } else if (t.kind == checks::Type::Many) {
+                collect(*std::get<std::shared_ptr<checks::Type>>(t.value));
+            } else {
+                elems.emplace_back(t);
+            }
+        };
+
+    for (auto &t : types)
+        collect(t);
+
+    std::vector<checks::Type> uniq;
+    for (auto &t : elems) {
+        if (std::none_of(uniq.begin(), uniq.end(), [&](auto &u) {
+                return is_matching(t, u) && is_matching(u, t);
+            })) {
+            uniq.push_back(t);
+        }
+    }
+
+    if (uniq.size() == 1)
+        return uniq.front();
+
+    return tunion(uniq);
+}
+
+bool unify(std::vector<checks::Type> &prev,
+           std::vector<checks::Type> const &now) {
+    auto p = prev.rbegin();
+    auto n = now.rbegin();
+    std::vector<checks::Type> suffix{};
+    for (; p != prev.rend() && n != now.rend(); ++p, ++n) {
+        if (is_matching(*n, *p)) {
+            suffix.emplace_back(*p);
+        } else {
+            suffix.emplace_back(tunion({*n, *p}));
+        }
+    }
+    std::vector<checks::Type> result{};
+    if (p == prev.rend() && n == now.rend()) {
+        result = suffix;
+        std::reverse(result.begin(), result.end());
+    } else {
+        std::vector<checks::Type> extras{};
+        for (; p != prev.rend(); ++p) {
+            extras.emplace_back(*p);
+        }
+
+        for (; n != now.rend(); ++n) {
+            extras.emplace_back(*n);
+        }
+
+        extras.insert(extras.end(), suffix.begin(), suffix.end());
+
+        checks::Type t = collapse_union(extras);
+
+        result.emplace_back(tmany(t));
+    }
+
+    if (stk_equals(result, prev)) {
+        return false;
+    }
+
+    prev = std::move(result);
+    return true;
+}
+
 void checks::TypeChecker::check() {
     for (auto &[name, decl] : decls) {
         if (decl.kind != traverser::Function::Native)
@@ -127,8 +233,21 @@ void checks::TypeChecker::check() {
         auto irs = std::get<std::vector<ir::Instruction>>(decl.body);
         auto [from, to] = expectations[name];
         std::vector<State> states{State{0, from}};
+        std::unordered_map<int, std::vector<Type>> visited{};
         while (!states.empty()) {
             auto &state = states.back();
+
+            if (visited.contains(state.ip)) {
+                if (!unify(visited.at(state.ip), state.stack)) {
+                    if (show_trace) {
+                        std::println("Converged : {}",
+                                     show_stack(visited.at(state.ip)));
+                    }
+                    states.pop_back();
+                    continue;
+                }
+            }
+
             auto instr = irs[state.ip];
             if (show_trace) {
                 std::println("On : {}", instr.show());
@@ -196,6 +315,9 @@ void checks::TypeChecker::check() {
                 state.ip = to_label(irs, std::get<std::string>(instr.value));
                 break;
             case ir::Instruction::Label:
+                if (!visited.contains(state.ip)) {
+                    visited[state.ip] = state.stack;
+                }
                 ++state.ip;
                 break;
             case ir::Instruction::Exit: {
@@ -350,6 +472,8 @@ std::string checks::Type::show() const {
         return std::format("generic({})", std::get<int>(value));
     case Many:
         return "..." + std::get<std::shared_ptr<Type>>(value)->show();
+    case Union:
+        return "union" + show_stack(std::get<std::vector<Type>>(value));
     }
 }
 
@@ -391,6 +515,125 @@ struct ArithmEffect : public checks::Effect {
     }
 };
 
+struct CompEffect : public checks::Effect {
+    std::string fname{};
+    CompEffect(std::string fname) : fname(std::move(fname)) {}
+    virtual void operator()(std::vector<checks::Type> &stack) override {
+        if (stack.empty())
+            throw checks::CheckError(fname,
+                                     "Expected 'int | float', got nothing");
+        if (!is_matching(stack.back(), tint()) ||
+            !is_matching(stack.back(), tfloat()))
+            throw checks::CheckError(fname, "Expected 'int | float', got '" +
+                                                stack.back().show() + "'");
+        stack_pop(stack);
+
+        if (stack.empty())
+            throw checks::CheckError(fname,
+                                     "Expected 'int | float', got nothing");
+        if (!is_matching(stack.back(), tint()) ||
+            !is_matching(stack.back(), tfloat()))
+            throw checks::CheckError(fname, "Expected 'int | float', got '" +
+                                                stack.back().show() + "'");
+        stack_pop(stack);
+
+        stack.emplace_back(tbool({}));
+    }
+};
+
+struct EqualEffect : public checks::Effect {
+    std::string fname{};
+    EqualEffect(std::string fname) : fname(std::move(fname)) {}
+    virtual void operator()(std::vector<checks::Type> &stack) override {
+        if (!stack_pop(stack) || !stack_pop(stack)) {
+            throw checks::CheckError(fname, "Expected any, got nothing");
+        }
+        stack.emplace_back(tbool({}));
+    }
+};
+
+struct AndEffect : public checks::Effect {
+    std::string fname{};
+    AndEffect(std::string fname) : fname(std::move(fname)) {}
+    virtual void operator()(std::vector<checks::Type> &stack) override {
+        std::optional<bool> right, left;
+        if (auto p = stack_pop(stack); p && p->kind == checks::Type::Bool) {
+            right = std::get<std::optional<bool>>(p->value);
+        } else if (!p) {
+            throw checks::CheckError(fname, "Expected 'bool', got nothing");
+        } else {
+            throw checks::CheckError(fname, "Expected 'bool', got '" +
+                                                p->show() + "'");
+        }
+
+        if (auto p = stack_pop(stack); p && p->kind == checks::Type::Bool) {
+            left = std::get<std::optional<bool>>(p->value);
+        } else if (!p) {
+            throw checks::CheckError(fname, "Expected 'bool', got nothing");
+        } else {
+            throw checks::CheckError(fname, "Expected 'bool', got '" +
+                                                p->show() + "'");
+        }
+
+        if (right && left) {
+            stack.emplace_back(tbool(*right && *left));
+        } else {
+            stack.emplace_back(tbool({}));
+        }
+    }
+};
+
+struct OrEffect : public checks::Effect {
+    std::string fname{};
+    OrEffect(std::string fname) : fname(std::move(fname)) {}
+    virtual void operator()(std::vector<checks::Type> &stack) override {
+        std::optional<bool> right, left;
+        if (auto p = stack_pop(stack); p && p->kind == checks::Type::Bool) {
+            right = std::get<std::optional<bool>>(p->value);
+        } else if (!p) {
+            throw checks::CheckError(fname, "Expected 'bool', got nothing");
+        } else {
+            throw checks::CheckError(fname, "Expected 'bool', got '" +
+                                                p->show() + "'");
+        }
+
+        if (auto p = stack_pop(stack); p && p->kind == checks::Type::Bool) {
+            left = std::get<std::optional<bool>>(p->value);
+        } else if (!p) {
+            throw checks::CheckError(fname, "Expected 'bool', got nothing");
+        } else {
+            throw checks::CheckError(fname, "Expected 'bool', got '" +
+                                                p->show() + "'");
+        }
+
+        if (right && left) {
+            stack.emplace_back(tbool(*right || *left));
+        } else {
+            stack.emplace_back(tbool({}));
+        }
+    }
+};
+
+struct NotEffect : public checks::Effect {
+    std::string fname{};
+    NotEffect(std::string fname) : fname(std::move(fname)) {}
+    virtual void operator()(std::vector<checks::Type> &stack) override {
+        if (auto p = stack_pop(stack); p && p->kind == checks::Type::Bool) {
+            auto val = std::get<std::optional<bool>>(p->value);
+            if (val) {
+                stack.emplace_back(tbool(!*val));
+            } else {
+                stack.emplace_back(tbool({}));
+            }
+        } else if (!p) {
+            throw checks::CheckError(fname, "Expected 'bool', got nothing");
+        } else {
+            throw checks::CheckError(fname, "Expected 'bool', got '" +
+                                                p->show() + "'");
+        }
+    }
+};
+
 static std::shared_ptr<checks::StaticEffect> const swap_eff = [] {
     auto a = tgeneric(generic_id());
     auto b = tgeneric(generic_id());
@@ -404,6 +647,48 @@ static std::shared_ptr<checks::StaticEffect> const dup_eff = [] {
         checks::StaticEffect{{a}, {a, a}, "dup"});
 }();
 
+static std::shared_ptr<checks::StaticEffect> const ovr_eff = [] {
+    auto a = tgeneric(generic_id());
+    auto b = tgeneric(generic_id());
+    return std::make_shared<checks::StaticEffect>(
+        checks::StaticEffect{{a, b}, {a, b, a}, "ovr"});
+}();
+
+static std::shared_ptr<checks::StaticEffect> const pck_eff = [] {
+    auto a = tgeneric(generic_id());
+    auto b = tgeneric(generic_id());
+    auto c = tgeneric(generic_id());
+    return std::make_shared<checks::StaticEffect>(
+        checks::StaticEffect{{a, b, c}, {a, b, c, a}, "pck"});
+}();
+
+static std::shared_ptr<checks::StaticEffect> const rot_eff = [] {
+    auto a = tgeneric(generic_id());
+    auto b = tgeneric(generic_id());
+    auto c = tgeneric(generic_id());
+    return std::make_shared<checks::StaticEffect>(
+        checks::StaticEffect{{a, b, c}, {b, c, a}, "rot"});
+}();
+
+static std::shared_ptr<checks::StaticEffect> const rotr_eff = [] {
+    auto a = tgeneric(generic_id());
+    auto b = tgeneric(generic_id());
+    auto c = tgeneric(generic_id());
+    return std::make_shared<checks::StaticEffect>(
+        checks::StaticEffect{{a, b, c}, {c, a, b}, "rot-"});
+}();
+
+static std::shared_ptr<checks::StaticEffect> const pop_eff = [] {
+    auto a = tgeneric(generic_id());
+    auto b = tgeneric(generic_id());
+    return std::make_shared<checks::StaticEffect>(
+        checks::StaticEffect{{a, b}, {a}, "pop"});
+}();
+
+static std::shared_ptr<checks::StaticEffect> const dpt_eff =
+    std::make_shared<checks::StaticEffect>(
+        checks::StaticEffect{{}, {tint()}, "dpt"});
+
 static std::unordered_map<std::string, std::shared_ptr<checks::Effect>> const
     builtins{{"+", std::make_shared<ArithmEffect>(ArithmEffect{"+"})},
              {"-", std::make_shared<ArithmEffect>(ArithmEffect{"-"})},
@@ -413,7 +698,34 @@ static std::unordered_map<std::string, std::shared_ptr<checks::Effect>> const
              {"↕", swap_eff},
              {"swp", swap_eff},
              {"⇈", dup_eff},
-             {"dup", dup_eff}};
+             {"dup", dup_eff},
+             {"⊼", ovr_eff},
+             {"ovr", ovr_eff},
+             {"↻", rot_eff},
+             {"rot", rot_eff},
+             {"↷", rotr_eff},
+             {"rot-", rotr_eff},
+             {"⩞", pck_eff},
+             {"pck", pck_eff},
+             {"◌", pop_eff},
+             {"pop", pop_eff},
+             {"≡", dpt_eff},
+             {"dpt", dpt_eff},
+             {"<", std::make_shared<CompEffect>("<")},
+             {">", std::make_shared<CompEffect>(">")},
+             {"<=", std::make_shared<CompEffect>("<=")},
+             {">=", std::make_shared<CompEffect>(">=")},
+             {"≤", std::make_shared<CompEffect>("≤")},
+             {"≥", std::make_shared<CompEffect>("≥")},
+             {"=", std::make_shared<EqualEffect>("=")},
+             {"!=", std::make_shared<EqualEffect>("!=")},
+             {"≠", std::make_shared<EqualEffect>("≠")},
+             {"&&", std::make_shared<AndEffect>("&&")},
+             {"∧", std::make_shared<AndEffect>("∧")},
+             {"||", std::make_shared<OrEffect>("||")},
+             {"∨", std::make_shared<OrEffect>("∨")},
+             {"!", std::make_shared<NotEffect>("!")},
+             {"¬", std::make_shared<NotEffect>("¬")}};
 
 void checks::TypeChecker::collect_signatures() {
     signatures = builtins;

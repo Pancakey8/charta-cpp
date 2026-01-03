@@ -1,6 +1,11 @@
-fn foo (x : bool) -> (int) {
-→ '⊤ ? 3 7 +
-     ↓
-    'a' 
+fn cond () -> (bool) {
+→ '⊤
 }
 
+fn main () -> () {
+↓
+cond  ←
+?→  3 ↑
+'a'
+→     ↑
+}

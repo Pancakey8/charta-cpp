@@ -25,11 +25,12 @@ struct Type {
         Opaque,
         Generic,
         Many,
+        Union,
     } kind;
 
     std::variant<std::optional<bool>, std::optional<std::vector<Type>>,
                  std::optional<std::vector<ir::Instruction>>,
-                 std::shared_ptr<Type>, int>
+                 std::shared_ptr<Type>, int, std::vector<Type>>
         value;
     std::string show() const;
 };
@@ -52,8 +53,7 @@ struct StaticEffect : public Effect {
 
 class TypeChecker {
     bool show_trace;
-    std::unordered_map<std::string, std::shared_ptr<Effect>>
-        signatures{};
+    std::unordered_map<std::string, std::shared_ptr<Effect>> signatures{};
     std::unordered_map<std::string,
                        std::pair<std::vector<Type>, std::vector<Type>>>
         expectations{};
