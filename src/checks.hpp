@@ -26,6 +26,7 @@ struct Type {
         Generic,
         Many,
         Union,
+        Liquid
     } kind;
 
     std::variant<std::optional<bool>, std::optional<std::vector<Type>>,

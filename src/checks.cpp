@@ -19,6 +19,8 @@ checks::Type tchar() { return checks::Type{checks::Type::Char, {}}; }
 
 checks::Type tstring() { return checks::Type{checks::Type::String, {}}; }
 
+checks::Type tliquid() { return checks::Type{checks::Type::Liquid, {}}; }
+
 checks::Type tbool(std::optional<bool> v) {
     return checks::Type{checks::Type::Bool, v};
 }
@@ -29,6 +31,10 @@ checks::Type tgeneric(int id) {
 
 checks::Type tunion(std::vector<checks::Type> ts) {
     return checks::Type{checks::Type::Union, std::move(ts)};
+}
+
+checks::Type tstack(std::optional<std::vector<checks::Type>> ts) {
+    return checks::Type{checks::Type::Stack, std::move(ts)};
 }
 
 checks::Type tmany(checks::Type t) {
@@ -93,6 +99,9 @@ bool is_matching(checks::Type const &got, checks::Type const &expect) {
                expect.kind == checks::Type::Generic) {
         return false;
     }
+
+    if (got.kind == checks::Type::Liquid || expect.kind == checks::Type::Liquid)
+        return true;
 
     if (got.kind == checks::Type::Many) {
         return is_matching(*std::get<std::shared_ptr<checks::Type>>(got.value),
@@ -410,7 +419,10 @@ checks::Type sig2type(parser::TypeSig arg,
 }
 
 void checks::StaticEffect::operator()(std::vector<Type> &stack) {
-    for (auto expect = takes.rbegin(); expect != takes.rend(); ++expect) {
+    auto takes_now = takes;
+    auto leaves_now = leaves;
+    for (auto expect = takes_now.rbegin(); expect != takes_now.rend();
+         ++expect) {
         if (stack.empty())
             throw CheckError(fname, std::format("Expected '{}', got nothing",
                                                 expect->show()));
@@ -418,12 +430,12 @@ void checks::StaticEffect::operator()(std::vector<Type> &stack) {
         auto &got = stack.back();
         if (expect->kind == Type::Generic) {
             int id = std::get<int>(expect->value);
-            for (auto &t : takes) {
+            for (auto &t : takes_now) {
                 if (t.kind == Type::Generic && std::get<int>(t.value) == id) {
                     t = got;
                 }
             }
-            for (auto &t : leaves) {
+            for (auto &t : leaves_now) {
                 if (t.kind == Type::Generic && std::get<int>(t.value) == id) {
                     t = got;
                 }
@@ -435,12 +447,12 @@ void checks::StaticEffect::operator()(std::vector<Type> &stack) {
 
         stack_pop(stack);
     }
-    for (auto &t : leaves) {
+    for (auto &t : leaves_now) {
         if (t.kind == Type::Generic)
             throw CheckError(fname, std::format("Unresolved generic '{}'",
                                                 std::get<int>(t.value)));
     }
-    stack.insert(stack.end(), leaves.begin(), leaves.end());
+    stack.insert(stack.end(), leaves_now.begin(), leaves_now.end());
 }
 std::string checks::Type::show() const {
     switch (kind) {
@@ -474,7 +486,26 @@ std::string checks::Type::show() const {
         return "..." + std::get<std::shared_ptr<Type>>(value)->show();
     case Union:
         return "union" + show_stack(std::get<std::vector<Type>>(value));
+    case Liquid:
+        return "liquid";
     }
+}
+
+std::vector<checks::Type> ensure(std::vector<checks::Type> &stack,
+                                 std::vector<checks::Type> const &expected,
+                                 std::string fname) {
+    std::vector<checks::Type> got{};
+    for (auto ex = expected.rbegin(); ex != expected.rend(); ++ex) {
+        if (stack.empty())
+            throw checks::CheckError{
+                fname, std::format("Expected '{}', got nothing", ex->show())};
+        if (!is_matching(stack.back(), *ex))
+            throw checks::CheckError{
+                fname, std::format("Expected '{}', got '{}'", ex->show(),
+                                   stack.back().show())};
+        got.emplace_back(*stack_pop(stack));
+    }
+    return got;
 }
 
 struct ArithmEffect : public checks::Effect {
@@ -519,23 +550,8 @@ struct CompEffect : public checks::Effect {
     std::string fname{};
     CompEffect(std::string fname) : fname(std::move(fname)) {}
     virtual void operator()(std::vector<checks::Type> &stack) override {
-        if (stack.empty())
-            throw checks::CheckError(fname,
-                                     "Expected 'int | float', got nothing");
-        if (!is_matching(stack.back(), tint()) ||
-            !is_matching(stack.back(), tfloat()))
-            throw checks::CheckError(fname, "Expected 'int | float', got '" +
-                                                stack.back().show() + "'");
-        stack_pop(stack);
-
-        if (stack.empty())
-            throw checks::CheckError(fname,
-                                     "Expected 'int | float', got nothing");
-        if (!is_matching(stack.back(), tint()) ||
-            !is_matching(stack.back(), tfloat()))
-            throw checks::CheckError(fname, "Expected 'int | float', got '" +
-                                                stack.back().show() + "'");
-        stack_pop(stack);
+        ensure(stack, {tunion({tint(), tfloat()}), tunion({tint(), tfloat()})},
+               fname);
 
         stack.emplace_back(tbool({}));
     }
@@ -634,6 +650,61 @@ struct NotEffect : public checks::Effect {
     }
 };
 
+struct BoxEffect : public checks::Effect {
+    virtual void operator()(std::vector<checks::Type> &stack) override {
+        checks::Type t = tstack(stack);
+        stack = std::vector<checks::Type>{t};
+    }
+};
+
+struct InsEffect : public checks::Effect {
+    virtual void operator()(std::vector<checks::Type> &stack) override {
+        auto args = ensure(stack, {tstack({}), tliquid()}, "ins");
+        auto &stk = args.back();
+        if (stk.kind == checks::Type::Stack)
+            if (auto &val = std::get<std::optional<std::vector<checks::Type>>>(
+                    stk.value)) {
+                val->emplace_back(args.front());
+            }
+        stack.emplace_back(stk);
+    }
+};
+
+struct FetchEffect : public checks::Effect {
+    bool is_top;
+    bool is_pop;
+    std::string fname;
+    FetchEffect(bool is_top, bool is_pop, std::string fname)
+        : is_top(is_top), is_pop(is_pop), fname(fname) {}
+    virtual void operator()(std::vector<checks::Type> &stack) override {
+        auto args = ensure(stack, {tstack({})}, "fname");
+        auto &stk = args.back();
+        if (stk.kind == checks::Type::Stack)
+            if (auto &val = std::get<std::optional<std::vector<checks::Type>>>(
+                    stk.value)) {
+                if (val->empty())
+                    throw checks::CheckError(fname, "Got empty stack");
+                std::vector<checks::Type> list{};
+                if (!is_top) {
+                    list = std::vector(val->rbegin(), val->rend());
+                } else {
+                    list = *val;
+                }
+                checks::Type elem = *stack_pop(list);
+                if (is_pop && is_top) {
+                    *val = list;
+                } else if (is_pop && !is_top) {
+                    *val = std::vector(list.rbegin(), list.rend());
+                }
+                stack.emplace_back(tstack(*val));
+                stack.emplace_back(elem);
+                return;
+            }
+        stack.emplace_back(stk);
+        stack.emplace_back(tliquid());
+    }
+};
+
 static std::shared_ptr<checks::StaticEffect> const swap_eff = [] {
     auto a = tgeneric(generic_id());
     auto b = tgeneric(generic_id());
@@ -689,43 +760,76 @@ static std::shared_ptr<checks::StaticEffect> const dpt_eff =
     std::make_shared<checks::StaticEffect>(
         checks::StaticEffect{{}, {tint()}, "dpt"});
 
-static std::unordered_map<std::string, std::shared_ptr<checks::Effect>> const
-    builtins{{"+", std::make_shared<ArithmEffect>(ArithmEffect{"+"})},
-             {"-", std::make_shared<ArithmEffect>(ArithmEffect{"-"})},
-             {"*", std::make_shared<ArithmEffect>(ArithmEffect{"*"})},
-             {"/", std::make_shared<ArithmEffect>(ArithmEffect{"/"})},
-             {"%", std::make_shared<ArithmEffect>(ArithmEffect{"%"})},
-             {"↕", swap_eff},
-             {"swp", swap_eff},
-             {"⇈", dup_eff},
-             {"dup", dup_eff},
-             {"⊼", ovr_eff},
-             {"ovr", ovr_eff},
-             {"↻", rot_eff},
-             {"rot", rot_eff},
-             {"↷", rotr_eff},
-             {"rot-", rotr_eff},
-             {"⩞", pck_eff},
-             {"pck", pck_eff},
-             {"◌", pop_eff},
-             {"pop", pop_eff},
-             {"≡", dpt_eff},
-             {"dpt", dpt_eff},
-             {"<", std::make_shared<CompEffect>("<")},
-             {">", std::make_shared<CompEffect>(">")},
-             {"<=", std::make_shared<CompEffect>("<=")},
-             {">=", std::make_shared<CompEffect>(">=")},
-             {"≤", std::make_shared<CompEffect>("≤")},
-             {"≥", std::make_shared<CompEffect>("≥")},
-             {"=", std::make_shared<EqualEffect>("=")},
-             {"!=", std::make_shared<EqualEffect>("!=")},
-             {"≠", std::make_shared<EqualEffect>("≠")},
-             {"&&", std::make_shared<AndEffect>("&&")},
-             {"∧", std::make_shared<AndEffect>("∧")},
-             {"||", std::make_shared<OrEffect>("||")},
-             {"∨", std::make_shared<OrEffect>("∨")},
-             {"!", std::make_shared<NotEffect>("!")},
-             {"¬", std::make_shared<NotEffect>("¬")}};
+static std::unordered_map<std::string,
+                          std::shared_ptr<checks::Effect>> const builtins{
+    {"+", std::make_shared<ArithmEffect>(ArithmEffect{"+"})},
+    {"-", std::make_shared<ArithmEffect>(ArithmEffect{"-"})},
+    {"*", std::make_shared<ArithmEffect>(ArithmEffect{"*"})},
+    {"/", std::make_shared<ArithmEffect>(ArithmEffect{"/"})},
+    {"%", std::make_shared<ArithmEffect>(ArithmEffect{"%"})},
+    {"↕", swap_eff},
+    {"swp", swap_eff},
+    {"⇈", dup_eff},
+    {"dup", dup_eff},
+    {"⊼", ovr_eff},
+    {"ovr", ovr_eff},
+    {"↻", rot_eff},
+    {"rot", rot_eff},
+    {"↷", rotr_eff},
+    {"rot-", rotr_eff},
+    {"⩞", pck_eff},
+    {"pck", pck_eff},
+    {"◌", pop_eff},
+    {"pop", pop_eff},
+    {"≡", dpt_eff},
+    {"dpt", dpt_eff},
+    {"<", std::make_shared<CompEffect>("<")},
+    {">", std::make_shared<CompEffect>(">")},
+    {"<=", std::make_shared<CompEffect>("<=")},
+    {">=", std::make_shared<CompEffect>(">=")},
+    {"≤", std::make_shared<CompEffect>("≤")},
+    {"≥", std::make_shared<CompEffect>("≥")},
+    {"=", std::make_shared<EqualEffect>("=")},
+    {"!=", std::make_shared<EqualEffect>("!=")},
+    {"≠", std::make_shared<EqualEffect>("≠")},
+    {"&&", std::make_shared<AndEffect>("&&")},
+    {"∧", std::make_shared<AndEffect>("∧")},
+    {"||", std::make_shared<OrEffect>("||")},
+    {"∨", std::make_shared<OrEffect>("∨")},
+    {"!", std::make_shared<NotEffect>("!")},
+    {"¬", std::make_shared<NotEffect>("¬")},
+    {"chr", std::make_shared<checks::StaticEffect>(
+                checks::StaticEffect{{tint()}, {tchar()}, "chr"})},
+    {"ord", std::make_shared<checks::StaticEffect>(
+                checks::StaticEffect{{tchar()}, {tint()}, "ord"})},
+    {"∈", std::make_shared<checks::StaticEffect>(
+              checks::StaticEffect{{tliquid()}, {tliquid(), tint()}, "∈"})},
+    {"type", std::make_shared<checks::StaticEffect>(checks::StaticEffect{
+                 {tliquid()}, {tliquid(), tint()}, "type"})},
+    {"int", std::make_shared<checks::StaticEffect>(
+                checks::StaticEffect{{}, {tint()}, "int"})},
+    {"float", std::make_shared<checks::StaticEffect>(
+                  checks::StaticEffect{{}, {tint()}, "float"})},
+    {"char", std::make_shared<checks::StaticEffect>(
+                 checks::StaticEffect{{}, {tint()}, "char"})},
+    {"bool", std::make_shared<checks::StaticEffect>(
+                 checks::StaticEffect{{}, {tint()}, "bool"})},
+    {"string", std::make_shared<checks::StaticEffect>(
+                   checks::StaticEffect{{}, {tint()}, "string"})},
+    {"stack", std::make_shared<checks::StaticEffect>(
+                  checks::StaticEffect{{}, {tint()}, "stack"})},
+    {"box", std::make_shared<BoxEffect>(BoxEffect{})},
+    {"▭", std::make_shared<BoxEffect>(BoxEffect{})},
+    {"ins", std::make_shared<InsEffect>(InsEffect{})},
+    {"⤓", std::make_shared<InsEffect>(InsEffect{})},
+    {"fst", std::make_shared<FetchEffect>(FetchEffect{true, false, "fst"})},
+    {"⊢", std::make_shared<FetchEffect>(FetchEffect{true, false, "⊢"})},
+    {"fst!", std::make_shared<FetchEffect>(FetchEffect{true, true, "fst!"})},
+    {"⊢!", std::make_shared<FetchEffect>(FetchEffect{true, true, "⊢!"})},
+    {"lst", std::make_shared<FetchEffect>(FetchEffect{false, false, "lst"})},
+    {"⊣", std::make_shared<FetchEffect>(FetchEffect{false, false, "⊣"})},
+    {"lst!", std::make_shared<FetchEffect>(FetchEffect{false, true, "lst!"})},
+    {"⊣!", std::make_shared<FetchEffect>(FetchEffect{false, true, "⊣!"})}};
 
 void checks::TypeChecker::collect_signatures() {
     signatures = builtins;
@@ -744,6 +848,8 @@ void checks::TypeChecker::collect_signatures() {
         for (auto &arg : func.rets.args) {
             leaves.emplace_back(sig2type(arg, generics));
         }
+        std::reverse(takes.begin(), takes.end());
+        std::reverse(leaves.begin(), leaves.end());
         signatures.emplace(fname, std::make_shared<StaticEffect>(
                                       StaticEffect{takes, leaves, fname}));
         expectations.emplace(fname, std::make_pair(takes, leaves));
