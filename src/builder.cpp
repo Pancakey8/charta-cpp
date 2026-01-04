@@ -5,6 +5,7 @@
 #include "traverser.hpp"
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <print>
 
 std::vector<parser::TopLevel> builder::Builder::parse() {
@@ -73,20 +74,32 @@ std::string builder::Builder::generate() {
     }
     return code;
 }
-void builder::Builder::build(std::filesystem::path root, std::string out_file) {
+void builder::Builder::build(std::filesystem::path root, std::string out_file,
+                             std::optional<std::string> c_file) {
     std::string out{generate()};
+    std::string file{"-"};
+    if (c_file) {
+        std::ofstream fs(*c_file);
+        fs << out;
+        fs.flush();
+        file = *c_file;
+    }
     std::string cmd{
-        std::format("gcc -ggdb -fsanitize=address,leak -x c - -x none {} "
+        std::format("gcc -ggdb -fsanitize=address,leak -x c {} -x none {} "
                     "-I{} -o {} -lm {}",
-                    (root / "libcore.a").string(), (root / "core").string(),
-                    out_file, custom_args)};
+                    file, (root / "libcore.a").string(),
+                    (root / "core").string(), out_file, custom_args)};
     if (show_command) {
         std::println("Command: {}", cmd);
     }
     if (!is_dry_run) {
-        FILE *gcc = popen(cmd.data(), "w");
-        fputs(out.data(), gcc);
-        pclose(gcc);
+        if (c_file) {
+            std::system(cmd.c_str());
+        } else {
+            FILE *gcc = popen(cmd.data(), "w");
+            fputs(out.data(), gcc);
+            pclose(gcc);
+        }
     }
 }
 

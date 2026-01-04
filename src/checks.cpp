@@ -881,7 +881,7 @@ void run_instructions(checks::TypeChecker &checker,
     auto exits = checker.run_stack(stack, name, body);
     auto prev = exits.begin();
     for (auto now = exits.begin() + 1; now != exits.end(); ++now, ++prev) {
-        if (!stk_equals(*now, *prev)) {
+        if (!is_matching(now->back(), prev->back())) {
             throw checks::CheckError(
                 name, std::format("Subroutine results in mismatched "
                                   "returns '{}' and '{}'",

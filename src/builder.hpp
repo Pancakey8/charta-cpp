@@ -28,7 +28,8 @@ class Builder {
     Builder(std::string input, std::string filename)
         : input(std::move(input)), filename(std::move(filename)) {}
 
-    void build(std::filesystem::path root, std::string out_file);
+    void build(std::filesystem::path root, std::string out_file,
+               std::optional<std::string> c_file);
 
     Builder &ir();
     Builder &gen();

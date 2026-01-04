@@ -544,6 +544,7 @@ ch_stack_node *_mangle_(dbg, "dbg")(ch_stack_node **full) {
         printf("%zu | ", i);
         println_value(elem->val);
         elem = elem->next;
+        ++i;
     }
     return NULL;
 }
@@ -646,12 +647,10 @@ ch_stack_node *_mangle_(flat, "flat")(ch_stack_node **full) {
     ch_stack_node *local = ch_stk_args(full, 1, 0);
     ch_value stk = ch_stk_pop(&local);
     if (stk.kind != CH_VALK_STACK) {
-        printf("ERR: '⬚' expected 'stack', got '%s'\n",
-               ch_valk_name(stk.kind));
+        printf("ERR: '⬚' expected 'stack', got '%s'\n", ch_valk_name(stk.kind));
     }
-    ch_stk_append(&stk.value.stk, *full);
-    *full = NULL;
-    return stk.value.stk;    
+    ch_stk_append(full, stk.value.stk);
+    return NULL;
 }
 
 ch_stack_node *_mangle_(pop, "pop")(ch_stack_node **full) {
@@ -704,16 +703,29 @@ ch_stack_node *_mangle_(lst_pop, "lst!")(ch_stack_node **full) {
         printf("ERR: '⊣!' got empty stack");
         exit(1);
     }
-    ch_stack_node *stk = local->val.value.stk;
-    ch_stack_node *prev = NULL;
-    while (stk->next != NULL) {
-        prev = stk;
-        stk = stk->next;
+    ch_stack_node **stk = &local->val.value.stk;
+
+    if (*stk == NULL) {
+        printf("ERR: '⊣!' got empty stack");
+        exit(1);
     }
+
+    ch_stack_node *cur = *stk;
+    ch_stack_node *prev = NULL;
+
+    while (cur->next != NULL) {
+        prev = cur;
+        cur = cur->next;
+    }
+
     if (prev) {
         prev->next = NULL;
+    } else {
+        *stk = NULL; // single-element case
     }
-    ch_value val = ch_stk_pop(&stk);
+
+    ch_value val = cur->val;
+    free(cur);
     ch_stk_push(&local, val);
     return local;
 }

@@ -22,7 +22,9 @@ int main(int argc, char *argv[]) {
         std::println("  -cmd");
         std::println("  * Prints C compiler call\n");
         std::println("  -dry");
-        std::println("  * Does a dry-run, doesn't output binary\n");
+        std::println("  * Does a dry-run, doesn't output binary\nStill outputs C file");
+        std::println("  -cfile <c-file-path>");
+        std::println("  * Outputs generated C code instead of passing through STDIN");
         return 1;
     }
     std::filesystem::path exe_dir{
@@ -35,6 +37,7 @@ int main(int argc, char *argv[]) {
     builder::Builder b = builder::Builder(input, argv[1]);
     auto fp = std::filesystem::weakly_canonical(std::filesystem::path(argv[1]));
     auto out = fp.parent_path() / fp.replace_extension(".out");
+    std::optional<std::string> c_file{};
     for (std::size_t i = 1; i < argc; ++i) {
         std::string arg{argv[i]};
         if (arg == "-ir") {
@@ -58,12 +61,20 @@ int main(int argc, char *argv[]) {
         } else if (arg == "-cargs") {
             ++i;
             if (i >= argc) {
-                std::println("Err: -cargs expected target file\nUsage: -cargs "
+                std::println("Err: -cargs expected arguments\nUsage: -cargs "
                              "\"<c-compiler-args>\"");
                 return 1;
             }
             b.set_args(argv[i]);
+        } else if (arg == "-cfile") {
+            ++i;
+            if (i >= argc) {
+                std::println("Err: -cfile expected target file\nUsage: -cfile "
+                             "\"<c-file-path>\"");
+                return 1;
+            }
+            c_file = argv[i];
         }
     }
-    b.build(exe_dir, out);
+    b.build(exe_dir, out, c_file);
 }
