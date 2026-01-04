@@ -807,6 +807,20 @@ struct RevEffect : public checks::Effect {
     }
 };
 
+struct FlatEffect : public checks::Effect {
+    virtual void operator()(checks::TypeChecker &,
+                            std::vector<checks::Type> &stack) override {
+        auto stk = ensure(stack, {tstack({})}, "flat");
+        if (stk.front().kind == checks::Type::Stack)
+            if (auto val = std::get<std::optional<std::vector<checks::Type>>>(
+                    stk.front().value)) {
+                stack.insert(stack.end(), val->begin(), val->end());
+                return;
+            }
+        stack.emplace_back(tmany(tliquid()));
+    }
+};
+
 struct ApplyEffect : public checks::Effect {
     virtual void operator()(checks::TypeChecker &checker,
                             std::vector<checks::Type> &stack) override {
@@ -944,10 +958,32 @@ static std::shared_ptr<checks::StaticEffect> const rotr_eff = [] {
         checks::StaticEffect{{a, b, c}, {c, a, b}, "rot-"});
 }();
 
+static std::shared_ptr<checks::StaticEffect> const swpd_eff = [] {
+    auto a = tgeneric(generic_id());
+    auto b = tgeneric(generic_id());
+    auto c = tgeneric(generic_id());
+    return std::make_shared<checks::StaticEffect>(
+        checks::StaticEffect{{a, b, c}, {b, a, c}, "swpd"});
+}();
+
 static std::shared_ptr<checks::StaticEffect> const pop_eff = [] {
     auto a = tgeneric(generic_id());
     return std::make_shared<checks::StaticEffect>(
         checks::StaticEffect{{a}, {}, "pop"});
+}();
+
+static std::shared_ptr<checks::StaticEffect> const nip_eff = [] {
+    auto a = tgeneric(generic_id());
+    auto b = tgeneric(generic_id());
+    return std::make_shared<checks::StaticEffect>(
+        checks::StaticEffect{{a, b}, {b}, "nip"});
+}();
+
+static std::shared_ptr<checks::StaticEffect> const tck_eff = [] {
+    auto a = tgeneric(generic_id());
+    auto b = tgeneric(generic_id());
+    return std::make_shared<checks::StaticEffect>(
+        checks::StaticEffect{{a, b}, {b, a, b}, "tck"});
 }();
 
 static std::shared_ptr<checks::StaticEffect> const dpt_eff =
@@ -977,6 +1013,14 @@ static std::unordered_map<std::string,
     {"pop", pop_eff},
     {"≡", dpt_eff},
     {"dpt", dpt_eff},
+    {"swpd", swpd_eff},
+    {"↨", swpd_eff},
+    {"tck", tck_eff},
+    {"⊻", tck_eff},
+    {"nip", nip_eff},
+    {"⦵", nip_eff},
+    {"flat", std::make_shared<FlatEffect>()},
+    {"⬚", std::make_shared<FlatEffect>()},
     {"<", std::make_shared<CompEffect>("<")},
     {">", std::make_shared<CompEffect>(">")},
     {"<=", std::make_shared<CompEffect>("<=")},

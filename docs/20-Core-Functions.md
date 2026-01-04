@@ -11,11 +11,14 @@ rudimentary manipulation and inspection of the stack.
 |:----:|:------:|:-----------------------------------------------------------|
 | `⇈`  | `dup`  | Duplicates top value                                       |
 | `⊼`  | `ovr`  | Duplicates second value to the top                         |
+| `⊻`  | `tck`  | Duplicates first value below the second value              |
 | `⩞`  | `pck`  | Duplicates third value to the top                          |
 | `↕`  | `swp`  | Swaps the place of top two values                          |
+| `↨`  | `swpd` | Swaps the place of the second and third values             |
 | `↻`  | `rot`  | Moves the third value to the top                           |
 | `↷`  | `rot-` | Moves the top value to the third position (inverse of `↻`) |
 | `◌`  | `pop`  | Destroys the top value                                     |
+| `⦵`  | `nip`  | Destroys the second value                                  |
 | `≡`  | `dpt`  | Calculates the depth of the stack                          |
 
     
@@ -106,6 +109,7 @@ which are proper first-class values.
 | Name | ASCII  | Description                                                        |
 |:----:|:------:|:-------------------------------------------------------------------|
 | `▭`  | `box`  | Moves the entirety of the current stack into a stack object.       |
+| `⬚`  | `flat` | Expands stack object atop current stack.                           |
 | `⤓`  | `ins`  | Inserts the top value into a stack on the second position          |
 | `⊢`  | `fst`  | Retrieves the top value of a stack object                          |
 | `⊢!` | `fst!` | Pops the top value of a stack object                               |

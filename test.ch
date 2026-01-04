@@ -1,7 +1,7 @@
-fn shoofle (x : #a y : #b z : #c) -> (#c #b #a #c) {
-→ ↕ ⩞
+fn heyyy (x : stack) -> (... int) {
+→ ⬚ 1 2 +
 }
 
 fn main () -> () {
-→ 1 2 3 shoofle dbg
+→ 1 'a' "hey" '⊤ ▭ 3.5 ⤓ ⬚ dbg
 }

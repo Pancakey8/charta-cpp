@@ -505,6 +505,37 @@ ch_stack_node *_mangle_(pick, "pck")(ch_stack_node **full) {
     return local;
 }
 
+ch_stack_node *_mangle_(nip, "nip")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 2, 0);
+    ch_value a = ch_stk_pop(&local);
+    ch_value b = ch_stk_pop(&local);
+    ch_stk_push(&local, a);
+    ch_val_delete(&b);
+    return local;
+}
+
+ch_stack_node *_mangle_(swpd, "swpd")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 3, 0);
+    ch_value a = ch_stk_pop(&local);
+    ch_value b = ch_stk_pop(&local);
+    ch_value c = ch_stk_pop(&local);
+    ch_stk_push(&local, b);
+    ch_stk_push(&local, c);
+    ch_stk_push(&local, a);
+    return local;
+}
+
+ch_stack_node *_mangle_(tck, "tck")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 2, 0);
+    ch_value a = ch_stk_pop(&local);
+    ch_value b = ch_stk_pop(&local);
+    ch_value a2 = ch_valcpy(&a);
+    ch_stk_push(&local, a2);
+    ch_stk_push(&local, b);
+    ch_stk_push(&local, a);
+    return local;
+}
+
 ch_stack_node *_mangle_(dbg, "dbg")(ch_stack_node **full) {
     ch_stack_node *elem = *full;
     size_t i = 0;
@@ -609,6 +640,18 @@ ch_stack_node *_mangle_(boxstk, "box")(ch_stack_node **full) {
     ch_stk_push(&stk, val);
     *full = NULL;
     return stk;
+}
+
+ch_stack_node *_mangle_(flat, "flat")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 1, 0);
+    ch_value stk = ch_stk_pop(&local);
+    if (stk.kind != CH_VALK_STACK) {
+        printf("ERR: '⬚' expected 'stack', got '%s'\n",
+               ch_valk_name(stk.kind));
+    }
+    ch_stk_append(&stk.value.stk, *full);
+    *full = NULL;
+    return stk.value.stk;    
 }
 
 ch_stack_node *_mangle_(pop, "pop")(ch_stack_node **full) {
@@ -1241,6 +1284,6 @@ ch_stack_node *_mangle_(repeat, "repeat")(ch_stack_node **full) {
     for (int i = 0; i < count.value.i; ++i) {
         ch_stack_node *ret = fn.value.fn(full);
         ch_stk_append(full, ret);
-    }        
+    }
     return NULL;
 }
