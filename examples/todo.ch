@@ -67,14 +67,14 @@ fn cmd/help (command : [string]) -> () {
 }
 
 fn cmd/add (command : [string] list : [string]) -> ([string]) {
-→ "" ≍ ↻ ⧺ ↨ ⋄ ◌ ⤓
-     ↓
-     ⊢!
-     " "
-     &
-     ↻
-     &
-     ↕
+→ ⇆ "" ≍ ↻ ⧺ ↨ ⋄ ◌ ⤓
+       ↓
+       ⊢!
+       " "
+       &
+       ↻
+       &
+       ↕
 }
 
 fn cmd/list (command : [string] list : [string]) -> ([string]) {
