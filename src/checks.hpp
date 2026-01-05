@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ir.hpp"
+#include "parser.hpp"
 #include "traverser.hpp"
 #include <functional>
 #include <memory>
@@ -26,12 +27,13 @@ struct Type {
         Generic,
         Many,
         Union,
-        Liquid
+        Liquid,
+        User        
     } kind;
 
     std::variant<std::optional<bool>, std::optional<std::vector<Type>>,
                  std::optional<std::vector<ir::Instruction>>,
-                 std::shared_ptr<Type>, int, std::vector<Type>>
+                 std::shared_ptr<Type>, int, std::vector<Type>, std::string>
         value;
     std::string show() const;
 };
@@ -62,12 +64,13 @@ class TypeChecker {
                        std::pair<std::vector<Type>, std::vector<Type>>>
         expectations{};
     std::unordered_map<std::string, traverser::Function> decls{};
+    std::vector<parser::TypeDecl> type_decls{};
 
     void collect_signatures();
 
   public:
-    TypeChecker(std::vector<traverser::Function> decls,
-                bool show_trace = false);
+    TypeChecker(std::vector<traverser::Function> decls, bool show_trace,
+                std::vector<parser::TypeDecl> type_decls);
 
     void check();
 

@@ -34,6 +34,10 @@ checks::Type tgeneric(int id) {
     return checks::Type{checks::Type::Generic, id};
 }
 
+checks::Type tuser(std::string name) {
+    return checks::Type{checks::Type::User, std::move(name)};
+}
+
 checks::Type tunion(std::vector<checks::Type> ts) {
     return checks::Type{checks::Type::Union, std::move(ts)};
 }
@@ -154,6 +158,11 @@ bool is_matching(checks::Type const &got, checks::Type const &expect) {
         if (!gstk || !estk)
             return true;
         return stk_equals(*gstk, *estk);
+    }
+
+    if (got.kind == checks::Type::User && expect.kind == checks::Type::User) {
+        return std::get<std::string>(got.value) ==
+               std::get<std::string>(expect.value);
     }
 
     return got.kind == expect.kind;
@@ -397,8 +406,9 @@ void checks::TypeChecker::check() {
 }
 
 checks::TypeChecker::TypeChecker(std::vector<traverser::Function> decls,
-                                 bool show_trace)
-    : show_trace(std::move(show_trace)) {
+                                 bool show_trace,
+                                 std::vector<parser::TypeDecl> type_decls)
+    : show_trace(std::move(show_trace)), type_decls(std::move(type_decls)) {
     for (auto &decl : decls) {
         this->decls.emplace(decl.name, decl);
     }
@@ -532,6 +542,8 @@ std::string checks::Type::show() const {
         return "union" + show_stack(std::get<std::vector<Type>>(value));
     case Liquid:
         return "liquid";
+    case User:
+        return std::get<std::string>(value);
     }
 }
 
@@ -1133,6 +1145,53 @@ void checks::TypeChecker::collect_signatures() {
         if (show_trace) {
             std::println("fn {} :: {} -> {}", fname, show_stack(takes),
                          show_stack(leaves));
+        }
+    }
+    for (auto decl : type_decls) {
+        std::vector<Type> fields{};
+        std::unordered_map<std::string, int> generics{};
+        for (auto &[name, sig] : decl.body) {
+            fields.emplace_back(sig2type(sig, generics));
+        }
+        std::reverse(fields.begin(), fields.end());        
+        if (!generics.empty()) {
+            throw CheckError("Generics aren't allowed at type-level",
+                             decl.name);
+        }
+        signatures.emplace(decl.name,
+                           std::make_shared<StaticEffect>(
+                               StaticEffect{{}, {tint()}, decl.name}));
+        signatures.emplace(decl.name + "!",
+                           std::make_shared<StaticEffect>(StaticEffect{
+                               fields, {tuser(decl.name)}, decl.name + "!"}));
+        auto d = decl.body.rbegin();
+        for (auto f = fields.begin(); f != fields.end(); ++f) {
+            std::string getter = decl.name + "." + d->first;
+            signatures.emplace(
+                getter,
+                std::make_shared<StaticEffect>(StaticEffect{
+                    {tuser(decl.name)}, {tuser(decl.name), *f}, getter}));
+            std::string setter = getter + "!";
+            signatures.emplace(
+                setter,
+                std::make_shared<StaticEffect>(StaticEffect{
+                    {tuser(decl.name), *f}, {tuser(decl.name)}, setter}));
+            ++d;
+        }
+        if (show_trace) {
+            std::string field_str{};
+            if (!fields.empty()) {
+                field_str = "{";
+                auto d = decl.body.rbegin();
+                for (auto f = fields.begin(); f != fields.end(); ++f) {
+                    field_str += "\n  " + d->first + " : " + f->show();
+                    ++d;
+                }
+                field_str += "\n}";
+            } else {
+                field_str = "{ <empty> }";
+            }
+            std::println("type {} = {}", decl.name, field_str);
         }
     }
 }

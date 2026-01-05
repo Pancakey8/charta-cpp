@@ -1,3 +1,11 @@
+cimport "stdio.h"
+
+type pair (x : int y : char)
+
+fn confused () -> (char) {
+→ 15.5 ∈ ◌
+}
+
 fn main () -> () {
-→ "hey" ▭ ⊣! dbg
+→ 'a' 3 pair! confused pair.y!
 }

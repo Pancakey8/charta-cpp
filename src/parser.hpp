@@ -122,7 +122,12 @@ struct CImport {
     std::string header;
 };
 
-using TopLevel = std::variant<FnDecl, CImport>;
+struct TypeDecl {
+    std::string name;
+    std::vector<std::pair<std::string, TypeSig>> body;
+};
+
+using TopLevel = std::variant<FnDecl, CImport, TypeDecl>;
 
 class Parser {
     std::vector<Token> input;
@@ -142,6 +147,8 @@ class Parser {
     std::optional<TypeSig> parse_typesig();
 
     std::optional<FnDecl> parse_fndecl();
+
+    std::optional<TypeDecl> parse_typedecl();
 
     std::optional<CImport> parse_c_import();
 

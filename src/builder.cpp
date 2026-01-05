@@ -52,21 +52,23 @@ std::vector<traverser::Function> builder::Builder::traverse() {
             }
         } else if (auto c_imp = std::get_if<parser::CImport>(&decl)) {
             c_includes.emplace_back(c_imp->header);
+        } else if (auto type = std::get_if<parser::TypeDecl>(&decl)) {
+            type_decls.emplace_back(*type);
         }
     }
     if (show_ir) {
         std::println("== End IR ==\n");
     }
     try {
-        checks::TypeChecker(fns, show_typecheck).check();
+        checks::TypeChecker(fns, show_typecheck, type_decls).check();
     } catch (checks::CheckError e) {
-        error(std::format("In function {}: {}", e.fname, e.what));
+        error(std::format("In {}: {}", e.fname, e.what));
     }
     return fns;
 }
 std::string builder::Builder::generate() {
     auto fns = traverse();
-    std::string code{backend::c::make_c(fns, c_includes)};
+    std::string code{backend::c::make_c(fns, c_includes, type_decls)};
     if (show_gen) {
         std::println("\n== Source ==");
         std::println("{}", code);

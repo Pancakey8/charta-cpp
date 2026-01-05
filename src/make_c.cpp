@@ -106,9 +106,169 @@ void emit_foreign(traverser::Function fn, std::string &out) {
         } else if (type.name == "opaque") {
             out += "void *" + name + "=ch_stk_pop(&__istack).value.op;\n";
         }
+        // TODO: Pop user type?
     }
     std::string body{process_mangling(process_returns(fn, defers))};
     out += body;
+}
+
+void emit_type(parser::TypeDecl decl, std::string &out) {
+    std::string mangled{mangle(decl.name)};
+    std::string type{"__it" + mangled};
+    out += "ch_stack_node *" + mangled + "(ch_stack_node **__ifull) {\n";
+    out += "ch_stack_node *__istack=ch_stk_args(__ifull, 0, 0);\n";
+    out += "ch_stk_push(&__istack, ch_valof_int(__iti" + mangled + "));\n";
+    out += "return __istack;\n";
+    out += "}\n";
+
+    out += "ch_stack_node *" + mangle(decl.name + "!") +
+           "(ch_stack_node **__ifull) {\n";
+    out += "ch_stack_node *__istack=ch_stk_args(__ifull, " +
+           std::to_string(decl.body.size()) + ",0);\n";
+    out +=
+        "struct " + type + "* __istruct=malloc(sizeof(struct " + type + "));\n";
+    for (auto &[name, sig] : decl.body) {
+        out += "__istruct->" + mangle(name) + "=ch_stk_pop(&__istack);\n";
+        if (sig.name == "stack" || sig.is_stack) {
+            out +=
+                "if (__istruct->" + mangle(name) + ".kind!=CH_VALK_STACK) {\n";
+            out += "printf(\"ERR: '" + decl.name +
+                   +"!' expected 'stack', got '%s'\\n\", "
+                    "ch_valk_name(__istruct->" +
+                   mangle(name) + ".kind));\n";
+            out += "exit(1);\n";
+            out += "}\n";
+        } else if (sig.name == "int") {
+            out += "if (__istruct->" + mangle(name) + ".kind!=CH_VALK_INT) {\n";
+            out += "printf(\"ERR: '" + decl.name +
+                   "!' expected 'int', got '%s'\\n\", "
+                   "ch_valk_name(__istruct->" +
+                   mangle(name) + ".kind));\n";
+            out += "exit(1);\n";
+            out += "}\n";
+        } else if (sig.name == "float") {
+            out +=
+                "if (__istruct->" + mangle(name) + ".kind!=CH_VALK_FLOAT) {\n";
+            out += "printf(\"ERR: '" + decl.name +
+                   "!' expected 'float', got '%s'\\n\", "
+                   "ch_valk_name(__istruct->" +
+                   mangle(name) + ".kind));\n";
+            out += "exit(1);\n";
+            out += "}\n";
+        } else if (sig.name == "char") {
+            out +=
+                "if (__istruct->" + mangle(name) + ".kind!=CH_VALK_CHAR) {\n";
+            out += "printf(\"ERR: '" + decl.name +
+                   "!' expected 'char', got '%s'\\n\", "
+                   "ch_valk_name(__istruct->" +
+                   mangle(name) + ".kind));\n";
+            out += "exit(1);\n";
+            out += "}\n";
+        } else if (sig.name == "bool") {
+            out +=
+                "if (__istruct->" + mangle(name) + ".kind!=CH_VALK_BOOL) {\n";
+            out += "printf(\"ERR: '" + decl.name +
+                   "!' expected 'bool', got '%s'\\n\", "
+                   "ch_valk_name(__istruct->" +
+                   mangle(name) + ".kind));\n";
+            out += "exit(1);\n";
+            out += "}\n";
+        } else if (sig.name == "function") {
+            out += "if (__istruct->" + mangle(name) +
+                   ".kind!=CH_VALK_FUNCTION) {\n";
+            out += "printf(\"ERR: '" + decl.name +
+                   "!' expected 'function', got '%s'\\n\", "
+                   "ch_valk_name(__istruct->" +
+                   mangle(name) + ".kind));\n";
+            out += "exit(1);\n";
+            out += "}\n";
+        } else if (sig.name == "string") {
+            out +=
+                "if (__istruct->" + mangle(name) + ".kind!=CH_VALK_STRING) {\n";
+            out += "printf(\"ERR: '" + decl.name +
+                   "!' expected 'string', got '%s'\\n\", "
+                   "ch_valk_name(__istruct->" +
+                   mangle(name) + ".kind));\n";
+            out += "exit(1);\n";
+            out += "}\n";
+        } else if (sig.name == "opaque") {
+            out +=
+                "if (__istruct->" + mangle(name) + ".kind!=CH_VALK_OPAQUE) {\n";
+            out += "printf(\"ERR: '" + decl.name +
+                   "!' expected 'opaque', got '%s'\\n\", "
+                   "ch_valk_name(__istruct->" +
+                   mangle(name) + ".kind));\n";
+            out += "exit(1);\n";
+            out += "}\n";
+        }
+    }
+    out += "ch_stk_push(&__istack,(ch_value){.kind=__iti" + mangled +
+           ",.value.op=__istruct});\n";
+    out += "return __istack;\n";
+    out += "}\n";
+
+    for (auto &[name, sig] : decl.body) {
+        out += "ch_stack_node *" + mangle(decl.name + "." + name) +
+               "(ch_stack_node **__ifull) {\n";
+        out += "ch_stack_node *__istack=ch_stk_args(__ifull, 1, 0);\n";
+        out += "ch_value v=ch_stk_pop(&__istack);\n";
+        out += "if (v.kind != __iti" + mangled + ") {\n";
+        out += "printf(\"ERR: '" + name + "' expected '" + decl.name +
+               "', got '%s'\\n\", ch_valk_name(v.kind));\n";
+        out += "exit(1);\n";
+        out += "}\n";
+        out += "struct __it" + mangled + "* st=v.value.op;\n";
+        out += "ch_stk_push(&__istack, v);\n";
+        out += "ch_stk_push(&__istack, st->" + mangle(name) + ");\n";
+        out += "return __istack;\n";
+        out += "}\n";
+
+        out += "ch_stack_node *" + mangle(decl.name + "." + name + "!") +
+               "(ch_stack_node **__ifull) {\n";
+        out += "ch_stack_node *__istack=ch_stk_args(__ifull, 2, 0);\n";
+        out += "ch_value new=ch_stk_pop(&__istack);\n";
+        out += "ch_value v=ch_stk_pop(&__istack);\n";
+        out += "if (v.kind != __iti" + mangled + ") {\n";
+        out += "printf(\"ERR: '" + name + "!' expected '" + decl.name +
+               "', got '%s'\\n\", ch_valk_name(v.kind));\n";
+        out += "exit(1);\n";
+        out += "}\n";
+        std::string kind;
+        if (sig.is_stack || sig.name == "stack") {
+            kind = "CH_VALK_STACK";
+        } else if (sig.name == "int") {
+            kind = "CH_VALK_INT";
+        } else if (sig.name == "float") {
+            kind = "CH_VALK_FLOAT";
+        } else if (sig.name == "char") {
+            kind = "CH_VALK_CHAR";
+        } else if (sig.name == "bool") {
+            kind = "CH_VALK_BOOL";
+        } else if (sig.name == "string") {
+            kind = "CH_VALK_STRING";
+        } else if (sig.name == "function") {
+            kind = "CH_VALK_FUNCTION";
+        } else if (sig.name == "opaque") {
+            kind = "CH_VALK_OPAQUE";
+        } else {
+            kind = "TODO_UNHANDLED";
+        }
+        std::string display_name{sig.name};
+        if (sig.is_stack) {
+            name = "[" + name + "]";
+        }
+        out += "if (new.kind != " + kind + ") {\n";
+        out += "printf(\"ERR: '" + name + "!' expected '" + display_name +
+               "', got '%s'\\n\", ch_valk_name(new.kind));\n";
+        out += "exit(1);\n";
+        out += "}\n";
+        out += "struct __it" + mangled + "* st=v.value.op;\n";
+        out += "ch_val_delete(&st->" + mangle(name) + ");\n";
+        out += "st->" + mangle(name) + "=new;\n";
+        out += "ch_stk_push(&__istack, v);\n";
+        out += "return __istack;\n";
+        out += "}\n";
+    }
 }
 
 void emit_native(traverser::Function fn, std::string &out,
@@ -184,10 +344,11 @@ void emit_native(traverser::Function fn, std::string &out,
     }
 }
 
-std::string backend::c::make_c(Program prog,
-                               std::vector<std::string> includes) {
+std::string backend::c::make_c(Program prog, std::vector<std::string> includes,
+                               std::vector<parser::TypeDecl> type_decls) {
     std::string full{};
     full += "#include \"core.h\"\n";
+    full += "#include \"stdlib.h\"\n";
     for (auto &inc : includes) {
         full += "#include " + parser::quote_str(inc) + "\n";
     }
@@ -210,6 +371,26 @@ std::string backend::c::make_c(Program prog,
                 "ch_stack_node *" + mangle(fn.name) + "(ch_stack_node **);\n";
             break;
         }
+        }
+
+        for (auto &decl : type_decls) {
+            full += "struct __it" + mangle(decl.name) + " {\n";
+            for (auto &[name, type] : decl.body) {
+                full += "ch_value " + mangle(name) + ";\n";
+            }
+            full += "};\n";
+            full += "static size_t __iti" + mangle(decl.name) + ";\n";
+            full +=
+                "ch_stack_node *" + mangle(decl.name) + "(ch_stack_node **);\n";
+            full += "ch_stack_node *" + mangle(decl.name + "!") +
+                    "(ch_stack_node **);\n";
+            for (auto &[name, _] : decl.body) {
+                full += "ch_stack_node *" + mangle(decl.name + "." + name) +
+                        "(ch_stack_node **);\n";
+                full += "ch_stack_node *" +
+                        mangle(decl.name + "." + name + "!") +
+                        "(ch_stack_node **);\n";
+            }
         }
     }
     full += "\n";
@@ -252,7 +433,15 @@ std::string backend::c::make_c(Program prog,
         }
         full += "}\n";
     }
+    full += "\n";
+    for (auto decl : type_decls) {
+        emit_type(decl, full);
+    }
     full += "\n\nint main(void) {\n";
+    for (auto &[name, _] : type_decls) {
+        full += "__iti" + mangle(name) + "=ch_type_register(" +
+                parser::quote_str(name) + ");\n";
+    }
     full += "ch_stack_node *stk = ch_stk_new();\n";
     full += "__smain(&stk);\n";
     full += "}\n";

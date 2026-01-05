@@ -3,7 +3,7 @@
 
 #define _mangle_(x, a) x
 
-typedef enum {
+typedef enum : size_t {
     CH_VALK_INT,
     CH_VALK_FLOAT,
     CH_VALK_BOOL,
@@ -11,8 +11,11 @@ typedef enum {
     CH_VALK_STRING,
     CH_VALK_STACK,
     CH_VALK_OPAQUE,
-    CH_VALK_FUNCTION
+    CH_VALK_FUNCTION,
+    CH_VALUE_KINDS
 } ch_value_kind;
+
+const char *ch_valk_name(ch_value_kind k);
 
 typedef struct {
     char *data;
@@ -261,3 +264,14 @@ static inline ch_stack_node *_mangle_(repeat2, "⋄")(ch_stack_node **full) {
     return _mangle_(repeat, "repeat")(full);
 }
 // panic
+
+typedef struct {
+    const char *name;
+    int id;
+} ch_type_info;
+
+extern ch_type_info *ch_type_table;
+extern size_t ch_type_table_len;
+extern size_t ch_type_table_size;
+
+size_t ch_type_register(const char *name);

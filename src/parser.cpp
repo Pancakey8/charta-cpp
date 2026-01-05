@@ -243,7 +243,7 @@ bool parser::Lexer::parse_special() {
         if (match("~~")) {
             output.emplace_back(Token{start, cursor, 2, Token::Subroutine, {}});
             return true;
-        }            
+        }
 
         return false;
     }
@@ -621,6 +621,63 @@ std::optional<parser::FnDecl> parser::Parser::parse_fndecl() {
         rets, grid};
 }
 
+std::optional<parser::TypeDecl> parser::Parser::parse_typedecl() {
+    if (auto p = peek(); !(p && p->kind == Token::Symbol &&
+                           std::get<std::string>(p->value) == "type")) {
+        return {};
+    }
+    ++cursor;
+    spaces();
+    std::string name;
+    if (auto p = peek(); p && p->kind == Token::Symbol) {
+        name = std::get<std::string>(p->value);
+    } else {
+        throw ParserError(p->start, p->end, "Expected type name");
+    }
+    ++cursor;
+    spaces();
+    std::size_t start, end;
+    if (auto p = peek(); p && p->kind == Token::LParen) {
+        start = p->start;
+        end = p->end;
+    } else {
+        throw ParserError(p->start, p->end, "Expected '('");
+    }
+    ++cursor;
+    spaces();
+    bool is_closed{false};
+    std::vector<std::pair<std::string, TypeSig>> args{};
+    while (auto p = peek()) {
+        ++cursor;
+        end = p->end;
+        if (p->kind == Token::RParen) {
+            is_closed = true;
+            break;
+        } else if (p->kind == Token::Symbol) {
+            std::string name = std::get<std::string>(p->value);
+            spaces();
+            if (auto p = peek(); !(p && p->kind == Token::Symbol &&
+                                   std::get<std::string>(p->value) == ":")) {
+                throw ParserError(p->start, p->end, "Expected ':'");
+            }
+            ++cursor;
+            spaces();
+            auto typ = parse_typesig();
+            if (!typ) {
+                throw ParserError(p->start, p->end, "Expected type signature");
+            }
+            args.emplace_back(std::pair{name, *typ});
+        } else {
+            throw ParserError(p->start, p->end, "Expected field name");
+        }
+        spaces();
+    }
+    if (!is_closed) {
+        throw ParserError(start, end, "Unclosed type body");
+    }
+    return TypeDecl{name, args};
+}
+
 std::optional<parser::CImport> parser::Parser::parse_c_import() {
     size_t start, end;
     if (auto p = peek(); !(p && p->kind == Token::Symbol &&
@@ -647,6 +704,8 @@ std::optional<parser::TopLevel> parser::Parser::parse_top_level() {
     if (auto p = parse_fndecl(); p)
         return p;
     if (auto p = parse_c_import(); p)
+        return p;
+    if (auto p = parse_typedecl(); p)
         return p;
     return {};
 }

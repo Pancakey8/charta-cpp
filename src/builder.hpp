@@ -10,6 +10,7 @@ class Builder {
     std::string filename{"<anonymous>"};
     std::string custom_args{};
     std::vector<std::string> c_includes{};
+    std::vector<parser::TypeDecl> type_decls{};
     bool show_ir{false};
     bool show_gen{false};
     bool show_command{false};
