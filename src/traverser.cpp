@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstdlib>
 #include <format>
+#include <print>
 #include <unordered_set>
 #include <vector>
 
@@ -50,6 +51,7 @@ std::vector<Instruction> filter_pos(std::vector<Instruction> instrs) {
                         next_instrs.emplace_back(Instruction{
                             Instruction::Label,
                             std::format("P_{}_{}", gpos.x, gpos.y)});
+                        break;
                     }
                 }
             }

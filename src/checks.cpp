@@ -156,7 +156,7 @@ bool is_matching(checks::Type const &got, checks::Type const &expect,
         }
 
         if (expect.kind == checks::Type::Liquid)
-          return true;
+            return true;
 
         return false;
     }
@@ -1155,6 +1155,8 @@ static std::unordered_map<std::string,
               checks::StaticEffect({tstring(), tstring()}, {tstring()}, "&"))},
     {".", std::make_shared<checks::StaticEffect>(
               checks::StaticEffect({tstring(), tchar()}, {tstring()}, "."))},
+    {".!", std::make_shared<checks::StaticEffect>(
+               checks::StaticEffect({tstring()}, {tstring(), tchar()}, ".!"))},
     {"▷", std::make_shared<ApplyEffect>(ApplyEffect{})},
     {"ap", std::make_shared<ApplyEffect>(ApplyEffect{})},
     {"⟜", std::make_shared<TailEffect>(TailEffect{})},

@@ -28,6 +28,7 @@ ch_string ch_str_new(char const *data);
 ch_string ch_str_alloc(size_t len);
 
 void ch_str_push(ch_string *str, char c);
+int ch_str_pop(ch_string *str);
 
 void ch_str_append(ch_string *str, ch_string *other);
 void ch_str_replace(ch_string *str, size_t pos, size_t n, ch_string const *rep);
@@ -251,6 +252,7 @@ ch_stack_node *_mangle_(strget, "@")(ch_stack_node **full);
 ch_stack_node *_mangle_(strset, "@!")(ch_stack_node **full);
 ch_stack_node *_mangle_(strapp, "&")(ch_stack_node **full);
 ch_stack_node *_mangle_(strpush, ".")(ch_stack_node **full);
+ch_stack_node *_mangle_(strpop, ".!")(ch_stack_node **full);
 
 ch_stack_node *_mangle_(fnapply, "ap")(ch_stack_node **full);
 static inline ch_stack_node *_mangle_(fnapply2, "▷")(ch_stack_node **full) {

@@ -152,6 +152,12 @@ fn test-stk-ops-2 () -> (int) {
                             0
 }
 
+fn test-str-ops-2 () -> (int) {
+→ "Hℝy" .! 'y' ≠ ? .! 'ℝ' ≠ ? "H" ≠ ? 0
+                 ↓          ↓       ↓
+                 1          2       3
+}
+
 fn main () -> () {
 →     "< > ≤ ≥" test-comparisons test ↓
 ↓              test test-equals "= ≠" ←
@@ -161,8 +167,9 @@ fn main () -> () {
 ↓          test test-bool-ops "∧ ∨ ¬" ←
 →          "type" test-type-info test ↓
 ↓ test test-more-stk-ops "⧺ ⇆ ↙ ↘ ++" ←
-→ "str ℓ @ @! . &" test-str-ops test  ↓
+→  "str ℓ @ @! . &" test-str-ops test ↓
 ↓             test test-apply "⋄ ⟜ ▷" ←
-→ "⩞ ↨ ⦵ ⊻" test-align-ops-2 test     ↓
-              test test-stk-ops-2 "⬚" ←
+→     "⩞ ↨ ⦵ ⊻" test-align-ops-2 test ↓
+↓             test test-stk-ops-2 "⬚" ←
+→            ".!" test-str-ops-2 test
 }

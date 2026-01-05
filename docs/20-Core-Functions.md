@@ -138,7 +138,8 @@ not implemented as a core function.
 | `@`   |        | Gets Nth character on the string, indexed as codepoints                                 |
 | `@!`  |        | Sets the Nth codepoint on the string to a character. `(idx : int ch : char s : string)` |
 | `&`   |        | Concatenates two strings                                                                |
-| `.`   |        | Pushes a character onto a string                                                        |
+| `.`   |        | Pushes a character to the end of the string                                             |
+| `.!`  |        | Pops a character from the end the string                                                |
 
 ## Function operations
 

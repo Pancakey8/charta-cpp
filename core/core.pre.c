@@ -38,6 +38,51 @@ void ch_str_push(ch_string *str, char c) {
     ++str->len;
 }
 
+int decode_utf(ch_string const *str, size_t pos, size_t *bytes);
+
+int ch_str_pop(ch_string *str) {
+    if (!str || str->len == 0)
+        return -1;
+
+    size_t end = str->len;
+    size_t i = end - 1;
+
+    while (i > 0 && ((unsigned char)str->data[i] & 0xC0) == 0x80)
+        i--;
+
+    unsigned char lead = (unsigned char)str->data[i];
+    size_t expected;
+
+    if ((lead & 0x80) == 0x00)
+        expected = 1;
+    else if ((lead & 0xE0) == 0xC0)
+        expected = 2;
+    else if ((lead & 0xF0) == 0xE0)
+        expected = 3;
+    else if ((lead & 0xF8) == 0xF0)
+        expected = 4;
+    else
+        return -1;
+
+    if (i + expected != end)
+        return -1;
+
+    for (size_t j = i + 1; j < end; j++) {
+        if (((unsigned char)str->data[j] & 0xC0) != 0x80)
+            return -1;
+    }
+
+    size_t bytes = 0;
+    int codepoint = decode_utf(str, i, &bytes);
+    if (bytes != expected)
+        return -1;
+
+    str->len -= bytes;
+    str->data[str->len] = '\0';
+
+    return codepoint;
+}
+
 void ch_str_append(ch_string *str, ch_string *other) {
     if (other->len == 0) {
         return;
@@ -1272,7 +1317,7 @@ ch_stack_node *_mangle_(strpush, ".")(ch_stack_node **full) {
     ch_value c = ch_stk_pop(&local);
     ch_value s = ch_stk_pop(&local);
     if (c.kind != CH_VALK_CHAR || s.kind != CH_VALK_STRING) {
-        printf("ERR: '&' expected char and string, got %s and %s",
+        printf("ERR: '.' expected char and string, got %s and %s",
                ch_valk_name(c.kind), ch_valk_name(s.kind));
         exit(1);
     }
@@ -1280,6 +1325,23 @@ ch_stack_node *_mangle_(strpush, ".")(ch_stack_node **full) {
     ch_str_append(&s.value.s, &ap);
     ch_str_delete(&ap);
     ch_stk_push(&local, s);
+    return local;
+}
+
+ch_stack_node *_mangle_(strpop, ".!")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 1, 0);
+    ch_value s = ch_stk_pop(&local);
+    if (s.kind != CH_VALK_STRING) {
+        printf("ERR: '.!' expected string, got %s", ch_valk_name(s.kind));
+        exit(1);
+    }
+    int c = ch_str_pop(&s.value.s);
+    if (c == -1) {
+        printf("ERR: '.!' failed to decode UTF8\n");
+        exit(1);
+    }
+    ch_stk_push(&local, s);
+    ch_stk_push(&local, ch_valof_char(c));
     return local;
 }
 
