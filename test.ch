@@ -3,4 +3,5 @@ fn ¿0 (stk : [#a]) -> (bool [#a]) {
 }
 
 fn main () -> () {
+→ 3 2 1 ▭ ¿0 dbg
 }

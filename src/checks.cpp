@@ -76,10 +76,13 @@ std::optional<checks::Type> stack_pop(std::vector<checks::Type> &stack) {
     return type;
 }
 
-bool is_matching(checks::Type const &got, checks::Type const &expect);
+bool is_matching(
+    checks::Type const &got, checks::Type const &expect,
+    std::unordered_map<int, checks::Type> *const is_resolving = nullptr);
 
-bool stk_equals(std::vector<checks::Type> gstk,
-                std::vector<checks::Type> estk) {
+bool stk_equals(
+    std::vector<checks::Type> gstk, std::vector<checks::Type> estk,
+    std::unordered_map<int, checks::Type> *const is_resolving = nullptr) {
     while (true) {
         if (estk.empty() && gstk.empty()) {
             return true;
@@ -94,7 +97,7 @@ bool stk_equals(std::vector<checks::Type> gstk,
         }
         if (estk.empty() || gstk.empty())
             return false;
-        if (!is_matching(gstk.back(), estk.back()))
+        if (!is_matching(gstk.back(), estk.back(), is_resolving))
             return false;
         if (gstk.back().kind == checks::Type::Many &&
             estk.back().kind == checks::Type::Many) {
@@ -115,29 +118,31 @@ bool stk_equals(std::vector<checks::Type> gstk,
     }
 }
 
-bool is_matching(checks::Type const &got, checks::Type const &expect) {
+bool is_matching(checks::Type const &got, checks::Type const &expect,
+                 std::unordered_map<int, checks::Type> *const is_resolving) {
     if (got.kind == checks::Type::Liquid || expect.kind == checks::Type::Liquid)
         return true;
 
     if (got.kind == checks::Type::Many) {
         return is_matching(*std::get<std::shared_ptr<checks::Type>>(got.value),
-                           expect);
+                           expect, is_resolving);
     } else if (expect.kind == checks::Type::Many) {
         return is_matching(
-            got, *std::get<std::shared_ptr<checks::Type>>(expect.value));
+            got, *std::get<std::shared_ptr<checks::Type>>(expect.value),
+            is_resolving);
     }
 
     if (got.kind == checks::Type::Union) {
         auto opts = std::get<std::vector<checks::Type>>(got.value);
         for (auto &o : opts) {
-            if (is_matching(o, expect))
+            if (is_matching(o, expect, is_resolving))
                 return true;
         }
         return false;
     } else if (expect.kind == checks::Type::Union) {
         auto opts = std::get<std::vector<checks::Type>>(expect.value);
         for (auto &o : opts) {
-            if (is_matching(got, o))
+            if (is_matching(got, o, is_resolving))
                 return true;
         }
         return false;
@@ -148,6 +153,10 @@ bool is_matching(checks::Type const &got, checks::Type const &expect) {
         return std::get<int>(got.value) == std::get<int>(expect.value);
     } else if (got.kind == checks::Type::Generic ||
                expect.kind == checks::Type::Generic) {
+        if (expect.kind == checks::Type::Generic && is_resolving) {
+            is_resolving->emplace(std::get<int>(expect.value), got);
+            return true;
+        }
         return false;
     }
 
@@ -158,7 +167,7 @@ bool is_matching(checks::Type const &got, checks::Type const &expect) {
             std::get<std::optional<std::vector<checks::Type>>>(expect.value);
         if (!gstk || !estk)
             return true;
-        return stk_equals(*gstk, *estk);
+        return stk_equals(*gstk, *estk, is_resolving);
     }
 
     if (got.kind == checks::Type::User && expect.kind == checks::Type::User) {
@@ -492,6 +501,21 @@ void checks::StaticEffect::operator()(TypeChecker &, std::vector<Type> &stack) {
     collect(leaves);
     auto takes_now = takes;
     auto leaves_now = leaves;
+    std::function<void(Type &, int, Type)> subst = [&subst](auto &t, auto id,
+                                                            auto got) {
+        if (t.kind == Type::Generic) {
+            if (std::get<int>(t.value) == id)
+                t = got;
+        } else if (t.kind == Type::Many) {
+            subst(*std::get<std::shared_ptr<Type>>(t.value), id, got);
+        } else if (t.kind == Type::Stack) {
+            if (auto &s = std::get<std::optional<std::vector<Type>>>(t.value)) {
+                for (auto &t : *s) {
+                    subst(t, id, got);
+                }
+            }
+        }
+    };
     for (auto expect = takes_now.rbegin(); expect != takes_now.rend();
          ++expect) {
         if (stack.empty())
@@ -499,21 +523,19 @@ void checks::StaticEffect::operator()(TypeChecker &, std::vector<Type> &stack) {
                                                 expect->show()));
 
         auto &got = stack.back();
-        if (expect->kind == Type::Generic) { // TODO: Resolve generics deeper
-            int id = std::get<int>(expect->value);
-            for (auto &t : takes_now) {
-                if (t.kind == Type::Generic && std::get<int>(t.value) == id) {
-                    t = got;
-                }
-            }
-            for (auto &t : leaves_now) {
-                if (t.kind == Type::Generic && std::get<int>(t.value) == id) {
-                    t = got;
-                }
-            }
-        } else if (!is_matching(got, *expect)) {
+        std::unordered_map<int, Type> resolved{};
+        if (!is_matching(got, *expect, &resolved)) {
             throw CheckError(fname, std::format("Expected '{}', got '{}'",
                                                 expect->show(), got.show()));
+        }
+
+        for (auto &[id, type] : resolved) {
+            for (auto &t : takes_now) {
+                subst(t, id, type);
+            }
+            for (auto &t : leaves_now) {
+                subst(t, id, type);
+            }
         }
 
         stack_pop(stack);
