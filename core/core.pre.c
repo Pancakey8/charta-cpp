@@ -246,13 +246,12 @@ void ch_val_delete(ch_value *val) {
     } else if (val->kind == CH_VALK_STACK) {
         ch_stk_delete(&val->value.stk);
     } else if (val->kind >= CH_VALUE_KINDS) {
+        ch_type_table[val->kind - CH_VALUE_KINDS].delete(val->value.op);
         free(val->value.op);
         val->value.op = NULL;
     }
     val->kind = -1;
 }
-
-ch_value ch_valcpy(ch_value const *v);
 
 ch_stack_node *ch_stk_copy(ch_stack_node *stk) {
     ch_stack_node *out = NULL;
@@ -283,9 +282,8 @@ ch_value ch_valcpy(ch_value const *v) {
         printf("ERR: Tried to copy opaque value\n");
         exit(1);
     } else if (v->kind >= CH_VALUE_KINDS) {
-        size_t sz = ch_type_table[v->kind - CH_VALUE_KINDS].size;
-        other.value.op = malloc(sz);
-        memcpy(other.value.op, v->value.op, sz);
+        other.value.op =
+            ch_type_table[v->kind - CH_VALUE_KINDS].copy(v->value.op);
     } else {
         other.value = v->value;
     }
@@ -1329,7 +1327,8 @@ ch_type_info *ch_type_table = NULL;
 size_t ch_type_table_len = 0;
 size_t ch_type_table_size = 0;
 
-size_t ch_type_register(const char *name, size_t size) {
+size_t ch_type_register(const char *name, size_t size, void (*delete)(void *s),
+                        void *(*copy)(void const *s)) {
     if (ch_type_table_len >= ch_type_table_size) {
         ch_type_table_size = 3 * ch_type_table_size / 2 + 5;
         ch_type_table =
@@ -1338,6 +1337,14 @@ size_t ch_type_register(const char *name, size_t size) {
     ++ch_type_table_len;
     int index = ch_type_table_len - 1;
     int id = index + CH_VALUE_KINDS;
-    ch_type_table[index] = (ch_type_info){.id = id, .name = name, .size = size};
+    ch_type_table[index] = (ch_type_info){
+        .id = id, .name = name, .size = size, .delete = delete, .copy = copy};
     return id;
+}
+
+void ch_type_delete() {
+    free(ch_type_table);
+    ch_type_table = NULL;
+    ch_type_table_size = 0;
+    ch_type_table_len = 0;
 }

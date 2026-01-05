@@ -71,6 +71,8 @@ char ch_valas_bool(ch_value v);
 
 void ch_val_delete(ch_value *val);
 
+ch_value ch_valcpy(ch_value const *v);
+
 typedef struct ch_stack_node {
     ch_value val;
     struct ch_stack_node *next;
@@ -269,10 +271,13 @@ typedef struct {
     const char *name;
     int id;
     size_t size;
+    void (*delete)(void *s);
+    void *(*copy)(void const *s);
 } ch_type_info;
 
 extern ch_type_info *ch_type_table;
 extern size_t ch_type_table_len;
 extern size_t ch_type_table_size;
 
-size_t ch_type_register(const char *name, size_t size);
+size_t ch_type_register(const char *name, size_t size, void (*delete)(void *s), void *(*copy)(void const *s));
+void ch_type_delete();

@@ -207,6 +207,24 @@ void emit_type(parser::TypeDecl decl, std::string &out) {
     out += "return __istack;\n";
     out += "}\n";
 
+    out += "void __idelete" + mangled + "(void *obj) {\n";
+    out += "struct __it" + mangled + " *st=obj;\n";
+    for (auto &[name, _] : decl.body) {
+        out += "ch_val_delete(&st->" + mangle(name) + ");\n";
+    }
+    out += "}\n";
+
+    out += "void *__icopy" + mangled + "(void const *obj) {\n";
+    out += "struct __it" + mangled + " const *st=obj;\n";
+    out += "struct __it" + mangled + " *copy=malloc(sizeof(struct __it" +
+           mangled + "));\n";
+    for (auto &[name, _] : decl.body) {
+        out += "copy->" + mangle(name) + "=ch_valcpy(&st->" + mangle(name) +
+               ");\n";
+    }
+    out += "return copy;\n";
+    out += "}\n";
+
     for (auto &[name, sig] : decl.body) {
         out += "ch_stack_node *" + mangle(decl.name + "." + name) +
                "(ch_stack_node **__ifull) {\n";
@@ -219,7 +237,7 @@ void emit_type(parser::TypeDecl decl, std::string &out) {
         out += "}\n";
         out += "struct __it" + mangled + "* st=v.value.op;\n";
         out += "ch_stk_push(&__istack, v);\n";
-        out += "ch_stk_push(&__istack, st->" + mangle(name) + ");\n";
+        out += "ch_stk_push(&__istack, ch_valcpy(&st->" + mangle(name) + "));\n";
         out += "return __istack;\n";
         out += "}\n";
 
@@ -253,7 +271,7 @@ void emit_type(parser::TypeDecl decl, std::string &out) {
         }
         std::string display_name{sig.name};
         if (sig.is_stack) {
-            name = "[" + name + "]";
+            display_name = "[" + display_name + "]";
         }
         if (kind) {
             out += "if (new.kind != " + *kind + ") {\n";
@@ -395,6 +413,8 @@ std::string backend::c::make_c(Program prog, std::vector<std::string> includes,
                 "ch_stack_node *" + mangle(decl.name) + "(ch_stack_node **);\n";
             full += "ch_stack_node *" + mangle(decl.name + "!") +
                     "(ch_stack_node **);\n";
+            full += "void * __icopy" + mangle(decl.name) + "(void const*);\n";
+            full += "void __idelete" + mangle(decl.name) + "(void *);\n";
             for (auto &[name, _] : decl.body) {
                 full += "ch_stack_node *" + mangle(decl.name + "." + name) +
                         "(ch_stack_node **);\n";
@@ -451,8 +471,9 @@ std::string backend::c::make_c(Program prog, std::vector<std::string> includes,
     full += "\n\nint main(void) {\n";
     for (auto &[name, _] : type_decls) {
         full += "__iti" + mangle(name) + "=ch_type_register(" +
-                parser::quote_str(name) + ", sizeof(struct __it" + mangle(name) +
-                "));\n";
+                parser::quote_str(name) + ", sizeof(struct __it" +
+                mangle(name) + "), __idelete" + mangle(name) + ", __icopy" +
+                mangle(name) + ");\n";
     }
     full += "ch_stack_node *stk = ch_stk_new();\n";
     full += "__smain(&stk);\n";
