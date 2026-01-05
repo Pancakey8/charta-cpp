@@ -64,6 +64,12 @@
    ;; fn keyword
    '("\\<fn\\>" . font-lock-keyword-face)
 
+   ;; type keyword
+   '("\\<type\\>" . font-lock-keyword-face)
+
+   ;; cimport keyword
+   '("\\<cimport\\>" . font-lock-keyword-face)
+
    ;; operators
    (cons (regexp-opt charta-operators)
          font-lock-builtin-face)

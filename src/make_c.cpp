@@ -213,8 +213,8 @@ void emit_type(parser::TypeDecl decl, std::string &out) {
         out += "ch_stack_node *__istack=ch_stk_args(__ifull, 1, 0);\n";
         out += "ch_value v=ch_stk_pop(&__istack);\n";
         out += "if (v.kind != __iti" + mangled + ") {\n";
-        out += "printf(\"ERR: '" + name + "' expected '" + decl.name +
-               "', got '%s'\\n\", ch_valk_name(v.kind));\n";
+        out += "printf(\"ERR: '" + decl.name + "." + name + "' expected '" +
+               decl.name + "', got '%s'\\n\", ch_valk_name(v.kind));\n";
         out += "exit(1);\n";
         out += "}\n";
         out += "struct __it" + mangled + "* st=v.value.op;\n";
@@ -229,11 +229,11 @@ void emit_type(parser::TypeDecl decl, std::string &out) {
         out += "ch_value new=ch_stk_pop(&__istack);\n";
         out += "ch_value v=ch_stk_pop(&__istack);\n";
         out += "if (v.kind != __iti" + mangled + ") {\n";
-        out += "printf(\"ERR: '" + name + "!' expected '" + decl.name +
-               "', got '%s'\\n\", ch_valk_name(v.kind));\n";
+        out += "printf(\"ERR: '" + decl.name + "." + name + "!' expected '" +
+               decl.name + "', got '%s'\\n\", ch_valk_name(v.kind));\n";
         out += "exit(1);\n";
         out += "}\n";
-        std::string kind;
+        std::optional<std::string> kind{};
         if (sig.is_stack || sig.name == "stack") {
             kind = "CH_VALK_STACK";
         } else if (sig.name == "int") {
@@ -250,18 +250,28 @@ void emit_type(parser::TypeDecl decl, std::string &out) {
             kind = "CH_VALK_FUNCTION";
         } else if (sig.name == "opaque") {
             kind = "CH_VALK_OPAQUE";
-        } else {
-            kind = "TODO_UNHANDLED";
         }
         std::string display_name{sig.name};
         if (sig.is_stack) {
             name = "[" + name + "]";
         }
-        out += "if (new.kind != " + kind + ") {\n";
-        out += "printf(\"ERR: '" + name + "!' expected '" + display_name +
-               "', got '%s'\\n\", ch_valk_name(new.kind));\n";
-        out += "exit(1);\n";
-        out += "}\n";
+        if (kind) {
+            out += "if (new.kind != " + *kind + ") {\n";
+            out += "printf(\"ERR: '" + decl.name + "." + name +
+                   "!' expected '" + display_name +
+                   "', got '%s'\\n\", ch_valk_name(new.kind));\n";
+            out += "exit(1);\n";
+            out += "}\n";
+        } else {
+            out += "if (new.kind < 0 || new.kind >= ch_type_table_len || "
+                   "ch_type_table[new.kind].id != __iti" +
+                   mangled + ") {\n";
+            out += "printf(\"ERR: '" + decl.name + "." + name +
+                   "!' expected '" + display_name +
+                   "', got '%s'\\n\", ch_valk_name(new.kind));\n";
+            out += "exit(1);\n";
+            out += "}\n";
+        }
         out += "struct __it" + mangled + "* st=v.value.op;\n";
         out += "ch_val_delete(&st->" + mangle(name) + ");\n";
         out += "st->" + mangle(name) + "=new;\n";
@@ -349,6 +359,7 @@ std::string backend::c::make_c(Program prog, std::vector<std::string> includes,
     std::string full{};
     full += "#include \"core.h\"\n";
     full += "#include \"stdlib.h\"\n";
+    full += "#include \"stdio.h\"\n";
     for (auto &inc : includes) {
         full += "#include " + parser::quote_str(inc) + "\n";
     }
@@ -440,7 +451,8 @@ std::string backend::c::make_c(Program prog, std::vector<std::string> includes,
     full += "\n\nint main(void) {\n";
     for (auto &[name, _] : type_decls) {
         full += "__iti" + mangle(name) + "=ch_type_register(" +
-                parser::quote_str(name) + ");\n";
+                parser::quote_str(name) + ", sizeof(struct __it" + mangle(name) +
+                "));\n";
     }
     full += "ch_stack_node *stk = ch_stk_new();\n";
     full += "__smain(&stk);\n";

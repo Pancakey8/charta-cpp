@@ -282,6 +282,10 @@ ch_value ch_valcpy(ch_value const *v) {
     } else if (v->kind == CH_VALK_OPAQUE) {
         printf("ERR: Tried to copy opaque value\n");
         exit(1);
+    } else if (v->kind >= CH_VALUE_KINDS) {
+        size_t sz = ch_type_table[v->kind - CH_VALUE_KINDS].size;
+        other.value.op = malloc(sz);
+        memcpy(other.value.op, v->value.op, sz);
     } else {
         other.value = v->value;
     }
@@ -461,8 +465,8 @@ ch_string print_value_str(ch_value v) {
         ch_string user = ch_str_new("<user>");
         ch_str_append(&out, &user);
         ch_str_delete(&user);
-        // TODO: User types        
-    }        
+        // TODO: User types
+    }
 
     return out;
 }
@@ -597,10 +601,10 @@ char val_equals(ch_value const *v1, ch_value const *v2) {
         return s1 == NULL && s2 == NULL;
     }
     default:
-      break;        
+        break;
     }
 
-    return 0; // TODO: User types    
+    return 0; // TODO: User types
 }
 
 ch_stack_node *_mangle_(equ_cmp, "=")(ch_stack_node **full) {
@@ -1325,7 +1329,7 @@ ch_type_info *ch_type_table = NULL;
 size_t ch_type_table_len = 0;
 size_t ch_type_table_size = 0;
 
-size_t ch_type_register(const char *name) {
+size_t ch_type_register(const char *name, size_t size) {
     if (ch_type_table_len >= ch_type_table_size) {
         ch_type_table_size = 3 * ch_type_table_size / 2 + 5;
         ch_type_table =
@@ -1334,6 +1338,6 @@ size_t ch_type_register(const char *name) {
     ++ch_type_table_len;
     int index = ch_type_table_len - 1;
     int id = index + CH_VALUE_KINDS;
-    ch_type_table[index] = (ch_type_info){.id = id, .name = name};
+    ch_type_table[index] = (ch_type_info){.id = id, .name = name, .size = size};
     return id;
 }

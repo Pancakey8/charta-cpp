@@ -421,7 +421,8 @@ int generic_id() {
 }
 
 checks::Type sig2type(parser::TypeSig arg,
-                      std::unordered_map<std::string, int> &generics) {
+                      std::unordered_map<std::string, int> &generics,
+                      std::vector<parser::TypeDecl> const &type_decls) {
     checks::Type t;
     if (arg.name == "int") {
         t = checks::Type{checks::Type::Int, {}};
@@ -449,7 +450,17 @@ checks::Type sig2type(parser::TypeSig arg,
             t = checks::Type{checks::Type::Generic, generics.at(arg.name)};
         }
     } else {
-        throw checks::CheckError{arg.name, "Invalid type '" + arg.name + "'"};
+        bool found{false};
+        for (auto &decl : type_decls) {
+            if (decl.name == arg.name) {
+                t = checks::Type{checks::Type::User, decl.name};
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+            throw checks::CheckError{arg.name,
+                                     "Invalid type '" + arg.name + "'"};
     }
 
     if (arg.is_stack) {
@@ -1124,19 +1135,19 @@ void checks::TypeChecker::collect_signatures() {
         std::vector<Type> takes{};
         std::unordered_map<std::string, int> generics{};
         for (auto &[name, arg] : func.args.args) {
-            takes.emplace_back(sig2type(arg, generics));
+            takes.emplace_back(sig2type(arg, generics, type_decls));
         }
         std::vector<Type> leaves{};
         for (auto &arg : func.rets.args) {
-            leaves.emplace_back(sig2type(arg, generics));
+            leaves.emplace_back(sig2type(arg, generics, type_decls));
         }
         std::reverse(takes.begin(), takes.end());
         std::reverse(leaves.begin(), leaves.end());
         expectations.emplace(fname, std::make_pair(takes, leaves));
         if (func.rets.rest) {
             leaves.insert(leaves.begin(),
-                          tstack(std::vector<Type>{
-                              tmany(sig2type(*func.rets.rest, generics))}));
+                          tstack(std::vector<Type>{tmany(sig2type(
+                              *func.rets.rest, generics, type_decls))}));
         }
         signatures.emplace(fname,
                            std::make_shared<StaticEffect>(StaticEffect{
@@ -1151,9 +1162,9 @@ void checks::TypeChecker::collect_signatures() {
         std::vector<Type> fields{};
         std::unordered_map<std::string, int> generics{};
         for (auto &[name, sig] : decl.body) {
-            fields.emplace_back(sig2type(sig, generics));
+            fields.emplace_back(sig2type(sig, generics, type_decls));
         }
-        std::reverse(fields.begin(), fields.end());        
+        std::reverse(fields.begin(), fields.end());
         if (!generics.empty()) {
             throw CheckError("Generics aren't allowed at type-level",
                              decl.name);

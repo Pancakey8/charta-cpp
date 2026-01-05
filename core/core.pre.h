@@ -268,10 +268,11 @@ static inline ch_stack_node *_mangle_(repeat2, "⋄")(ch_stack_node **full) {
 typedef struct {
     const char *name;
     int id;
+    size_t size;
 } ch_type_info;
 
 extern ch_type_info *ch_type_table;
 extern size_t ch_type_table_len;
 extern size_t ch_type_table_size;
 
-size_t ch_type_register(const char *name);
+size_t ch_type_register(const char *name, size_t size);
