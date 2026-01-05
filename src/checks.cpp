@@ -120,9 +120,6 @@ bool stk_equals(
 
 bool is_matching(checks::Type const &got, checks::Type const &expect,
                  std::unordered_map<int, checks::Type> *const is_resolving) {
-    if (got.kind == checks::Type::Liquid || expect.kind == checks::Type::Liquid)
-        return true;
-
     if (got.kind == checks::Type::Many) {
         return is_matching(*std::get<std::shared_ptr<checks::Type>>(got.value),
                            expect, is_resolving);
@@ -157,8 +154,15 @@ bool is_matching(checks::Type const &got, checks::Type const &expect,
             is_resolving->emplace(std::get<int>(expect.value), got);
             return true;
         }
+
+        if (expect.kind == checks::Type::Liquid)
+          return true;
+
         return false;
     }
+
+    if (got.kind == checks::Type::Liquid || expect.kind == checks::Type::Liquid)
+        return true;
 
     if (expect.kind == checks::Type::Stack && got.kind == checks::Type::Stack) {
         auto gstk =
@@ -501,32 +505,33 @@ void checks::StaticEffect::operator()(TypeChecker &, std::vector<Type> &stack) {
     collect(leaves);
     auto takes_now = takes;
     auto leaves_now = leaves;
-    std::function<void(Type &, int, Type)> subst = [&subst](auto &t, auto id,
-                                                            auto got) {
-        if (t.kind == Type::Generic) {
-            if (std::get<int>(t.value) == id)
-                t = got;
-        } else if (t.kind == Type::Many) {
-            subst(*std::get<std::shared_ptr<Type>>(t.value), id, got);
-        } else if (t.kind == Type::Stack) {
-            if (auto &s = std::get<std::optional<std::vector<Type>>>(t.value)) {
-                for (auto &t : *s) {
-                    subst(t, id, got);
+    std::function<void(Type &, int, Type)> subst =
+        [&subst, &takes_now, &leaves_now](auto &t, auto id, auto got) {
+            if (t.kind == Type::Generic) {
+                if (std::get<int>(t.value) == id)
+                    t = got;
+            } else if (t.kind == Type::Many) {
+                subst(*std::get<std::shared_ptr<Type>>(t.value), id, got);
+            } else if (t.kind == Type::Stack) {
+                if (auto &s =
+                        std::get<std::optional<std::vector<Type>>>(t.value)) {
+                    for (auto &t : *s) {
+                        subst(t, id, got);
+                    }
                 }
             }
-        }
-    };
-    for (auto expect = takes_now.rbegin(); expect != takes_now.rend();
-         ++expect) {
+        };
+    for (std::ptrdiff_t i = takes_now.size() - 1; i >= 0; --i) {
+        auto &expect = takes_now[i];
         if (stack.empty())
             throw CheckError(fname, std::format("Expected '{}', got nothing",
-                                                expect->show()));
+                                                expect.show()));
 
         auto &got = stack.back();
         std::unordered_map<int, Type> resolved{};
-        if (!is_matching(got, *expect, &resolved)) {
+        if (!is_matching(got, expect, &resolved)) {
             throw CheckError(fname, std::format("Expected '{}', got '{}'",
-                                                expect->show(), got.show()));
+                                                expect.show(), got.show()));
         }
 
         for (auto &[id, type] : resolved) {
@@ -1198,8 +1203,8 @@ void checks::TypeChecker::collect_signatures() {
         }
         std::reverse(fields.begin(), fields.end());
         if (!generics.empty()) {
-            throw CheckError("Generics aren't allowed at type-level",
-                             decl.name);
+            throw CheckError(decl.name,
+                             "Generics aren't allowed at type-level");
         }
         signatures.emplace(decl.name,
                            std::make_shared<StaticEffect>(
