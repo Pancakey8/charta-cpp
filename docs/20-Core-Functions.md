@@ -57,7 +57,7 @@ All operations below take and return booleans
 | Name | ASCII | Description |
 |:----:|:-----:|:------------|
 | `∧`  | `&&`  | Logical and |
-| `∨`  | `||`  | Logical or  |
+| `∨`  | `\|\|`  | Logical or  |
 | `¬`  | `!`   | Logical not |
 
 ## Character operations

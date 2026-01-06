@@ -248,8 +248,9 @@ implicitly; it must be specified as `stack` in the return list and must be
 constructed explicitly if desired.
 
 Function values constructed with `≍` do not have to specify an argument or
-return list, as they operate on the entire stack. Function values can be
-reasoned about as inlined operations.
+return list, as they operate on the entire stack. Function values can produce a
+*tail*. That is, a function value that returns `(int)` on one branch and
+`(int int)` on the other is accepted.
 
 ## Next Step
 
