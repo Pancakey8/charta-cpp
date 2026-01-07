@@ -4,6 +4,7 @@
 #include "parser.hpp"
 #include "traverser.hpp"
 #include <cassert>
+#include <functional>
 #include <print>
 #include <ranges>
 #include <sstream>
@@ -237,7 +238,8 @@ void emit_type(parser::TypeDecl decl, std::string &out) {
         out += "}\n";
         out += "struct __it" + mangled + "* st=v.value.op;\n";
         out += "ch_stk_push(&__istack, v);\n";
-        out += "ch_stk_push(&__istack, ch_valcpy(&st->" + mangle(name) + "));\n";
+        out +=
+            "ch_stk_push(&__istack, ch_valcpy(&st->" + mangle(name) + "));\n";
         out += "return __istack;\n";
         out += "}\n";
 
@@ -299,6 +301,7 @@ void emit_type(parser::TypeDecl decl, std::string &out) {
     }
 }
 
+// Assumes mangled FN name
 void emit_native(traverser::Function fn, std::string &out,
                  bool hijack = false) {
     for (auto [i, ir] : std::get<std::vector<ir::Instruction>>(fn.body) |
@@ -339,7 +342,7 @@ void emit_native(traverser::Function fn, std::string &out,
             break;
         }
         case ir::Instruction::Subroutine: {
-            std::string sub = mangle(fn.name) + "__i" + std::to_string(i);
+            std::string sub = fn.name + "__i" + std::to_string(i);
             out += "ch_stk_push(&__istack, ch_valof_function(&" + sub + "));\n";
             break;
         }
@@ -387,12 +390,23 @@ std::string backend::c::make_c(Program prog, std::vector<std::string> includes,
             std::string name{mangle(fn.name)};
             auto body = std::get<std::vector<ir::Instruction>>(fn.body);
             full += "ch_stack_node *" + name + "(ch_stack_node **);\n";
-            for (std::size_t i = 0; i < body.size(); ++i) {
-                if (body[i].kind == ir::Instruction::Subroutine) {
-                    full += "ch_stack_node *" + name + "__i" +
-                            std::to_string(i) + "(ch_stack_node **);\n";
-                }
-            }
+            std::function<void(std::vector<ir::Instruction> &,
+                               std::string name)>
+                generate_subs = [&generate_subs, &full](auto instrs,
+                                                        auto name) {
+                    for (std::size_t i = 0; i < instrs.size(); ++i) {
+                        if (instrs[i].kind == ir::Instruction::Subroutine) {
+                            std::string sub = name + "__i" + std::to_string(i);
+                            full += "ch_stack_node *" + sub +
+                                    "(ch_stack_node **);\n";
+                            generate_subs(
+                                std::get<std::vector<ir::Instruction>>(
+                                    instrs[i].value),
+                                sub);
+                        }
+                    }
+                };
+            generate_subs(body, name);
             break;
         }
         case traverser::Function::Foreign: {
@@ -428,25 +442,34 @@ std::string backend::c::make_c(Program prog, std::vector<std::string> includes,
     for (auto fn : prog) {
         if (fn.kind == traverser::Function::Native) {
             auto body = std::get<std::vector<ir::Instruction>>(fn.body);
-            for (auto [i, ir] : body | std::ranges::views::enumerate) {
-                if (ir.kind != ir::Instruction::Subroutine)
-                    continue;
-                std::string fname = mangle(fn.name) + "__i" + std::to_string(i);
-                full +=
-                    "ch_stack_node *" + fname + "(ch_stack_node **__ifull) {\n";
-                full += "ch_stack_node *__istack = ch_stk_new();\n";
-                full += "ch_stk_append(&__istack, *__ifull);\n";
-                full += "*__ifull = NULL;\n";
-                emit_native(
-                    traverser::Function{
-                        fname,
-                        {},
-                        {},
-                        std::get<std::vector<ir::Instruction>>(ir.value),
-                        traverser::Function::Native},
-                    full, true);
-                full += "}\n";
-            }
+            std::function<void(std::vector<ir::Instruction> &, std::string)>
+                generate = [&full, &generate](auto instrs, std::string name) {
+                    for (auto [i, ir] :
+                         instrs | std::ranges::views::enumerate) {
+                        if (ir.kind != ir::Instruction::Subroutine)
+                            continue;
+                        std::string fname = name + "__i" + std::to_string(i);
+                        full += "ch_stack_node *" + fname +
+                                "(ch_stack_node **__ifull) {\n";
+                        full += "ch_stack_node *__istack = ch_stk_new();\n";
+                        full += "ch_stk_append(&__istack, *__ifull);\n";
+                        full += "*__ifull = NULL;\n";
+                        emit_native(
+                            traverser::Function{
+                                fname,
+                                {},
+                                {},
+                                std::get<std::vector<ir::Instruction>>(
+                                    ir.value),
+                                traverser::Function::Native},
+                            full, true);
+                        full += "}\n";
+                        generate(
+                            std::get<std::vector<ir::Instruction>>(ir.value),
+                            fname);
+                    }
+                };
+            generate(body, mangle(fn.name));
         }
         full += "ch_stack_node *" + mangle(fn.name) +
                 "(ch_stack_node **__ifull) {\n";
@@ -455,9 +478,12 @@ std::string backend::c::make_c(Program prog, std::vector<std::string> includes,
                 std::to_string(fn.args.kind == parser::Argument::Ellipses) +
                 ");\n";
         switch (fn.kind) {
-        case traverser::Function::Native:
-            emit_native(fn, full);
+        case traverser::Function::Native: {
+            auto f = traverser::Function{fn};
+            f.name = mangle(f.name);
+            emit_native(f, full);
             break;
+        }
         case traverser::Function::Foreign:
             emit_foreign(fn, full);
             break;
