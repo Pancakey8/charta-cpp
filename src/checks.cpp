@@ -867,6 +867,15 @@ struct RevEffect : public checks::Effect {
     }
 };
 
+struct NullEffect : public checks::Effect {
+    virtual void operator()(checks::TypeChecker &,
+                            std::vector<checks::Type> &stack) override {
+        auto stk = ensure(stack, {tstack({})}, "null");
+        stack.emplace_back(stk.front());
+        stack.emplace_back(tbool({}));
+    }
+};
+
 struct FlatEffect : public checks::Effect {
     virtual void operator()(checks::TypeChecker &,
                             std::vector<checks::Type> &stack) override {
@@ -1141,6 +1150,8 @@ static std::unordered_map<std::string,
               checks::StaticEffect{{tstack({}), tint()}, {tstack({})}, "↘"})},
     {"rev", std::make_shared<RevEffect>(RevEffect{})},
     {"⇆", std::make_shared<RevEffect>(RevEffect{})},
+    {"null", std::make_shared<NullEffect>(NullEffect{})},
+    {"∘", std::make_shared<NullEffect>(NullEffect{})},
     {"str", std::make_shared<checks::StaticEffect>(
                 checks::StaticEffect({tliquid()}, {tstring()}, "str"))},
     {"slen", std::make_shared<checks::StaticEffect>(checks::StaticEffect(

@@ -54,11 +54,11 @@ work on any type.
 
 All operations below take and return booleans
 
-| Name | ASCII | Description |
-|:----:|:-----:|:------------|
-| `∧`  | `&&`  | Logical and |
-| `∨`  | `\|\|`  | Logical or  |
-| `¬`  | `!`   | Logical not |
+| Name | ASCII  | Description |
+|:----:|:------:|:------------|
+| `∧`  | `&&`   | Logical and |
+| `∨`  | `\|\|` | Logical or  |
+| `¬`  | `!`    | Logical not |
 
 ## Character operations
 
@@ -120,6 +120,7 @@ which are proper first-class values.
 | `↙`  | `take` | Takes N values from a stack object, moving into a new stack object |
 | `↘`  | `drop` | Pops N values from a stack object                                  |
 | `⇆`  | `rev`  | Reverses a stack object                                            |
+| `∘`  | `null` | Pushes true if the stack is empty, false otherwise                 |
 
 Because it is more convenient to think of `5 ↙`, `"hello" ⤓`, ... as singular
 operations, it is conventional for operations acting on an object (in this case,

@@ -38,7 +38,7 @@ int main(int argc, char *argv[]) {
     auto fp = std::filesystem::weakly_canonical(std::filesystem::path(argv[1]));
     auto out = fp.parent_path() / fp.replace_extension(".out");
     std::optional<std::string> c_file{};
-    for (std::size_t i = 1; i < argc; ++i) {
+    for (std::size_t i = 2; i < argc; ++i) {
         std::string arg{argv[i]};
         if (arg == "-ir") {
             b.ir();
@@ -74,7 +74,9 @@ int main(int argc, char *argv[]) {
                 return 1;
             }
             c_file = argv[i];
-        }
+        } else {
+          std::println("Skipping unrecognized argument '{}'", argv[i]);
+        }            
     }
     b.build(exe_dir, out, c_file);
 }

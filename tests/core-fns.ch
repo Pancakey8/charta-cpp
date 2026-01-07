@@ -149,7 +149,14 @@ fn test-align-ops-2 () -> (int) {
 fn test-stk-ops-2 () -> (int) {
 → 1 2 3 4 ▭ ⇆ ⬚ 1 = ↕ 2 = ∧ ? 1
                             ↓
-                            0
+                            ▭
+                            ∘
+                            ?→ 2
+                            ◌
+                            ▭
+                            ∘
+                            ?→ 0
+                            3
 }
 
 fn test-str-ops-2 () -> (int) {
@@ -170,6 +177,6 @@ fn main () -> () {
 →  "str ℓ @ @! . &" test-str-ops test ↓
 ↓             test test-apply "⋄ ⟜ ▷" ←
 →     "⩞ ↨ ⦵ ⊻" test-align-ops-2 test ↓
-↓             test test-stk-ops-2 "⬚" ←
+↓           test test-stk-ops-2 "∘ ⬚" ←
 →            ".!" test-str-ops-2 test
 }

@@ -228,6 +228,10 @@ ch_stack_node *_mangle_(len, "len")(ch_stack_node **full);
 static inline ch_stack_node *_mangle_(len2, "⧺")(ch_stack_node **full) {
     return _mangle_(len, "len")(full);
 }
+ch_stack_node *_mangle_(is_null, "null")(ch_stack_node **full);
+static inline ch_stack_node *_mangle_(is_null2, "∘")(ch_stack_node **full) {
+    return _mangle_(is_null, "null")(full);
+}
 
 ch_stack_node *_mangle_(concat, "++")(ch_stack_node **full);
 ch_stack_node *_mangle_(take, "take")(ch_stack_node **full);

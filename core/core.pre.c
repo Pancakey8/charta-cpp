@@ -1236,6 +1236,17 @@ ch_stack_node *_mangle_(rev, "rev")(ch_stack_node **full) {
     return local;
 }
 
+ch_stack_node *_mangle_(is_null, "null")(ch_stack_node **full) {
+    ch_stack_node *local = ch_stk_args(full, 1, 0);
+    if (local->val.kind != CH_VALK_STACK) {
+        printf("ERR: 'null' expected stack, got '%s'",
+               ch_valk_name(local->val.kind));
+        exit(1);
+    }
+    ch_stk_push(&local, ch_valof_bool(local->val.value.stk == NULL));
+    return local;
+}
+
 ch_stack_node *_mangle_(str, "str")(ch_stack_node **full) {
     ch_stack_node *local = ch_stk_args(full, 1, 0);
     ch_value val = ch_stk_pop(&local);
